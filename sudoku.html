@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>СУДОКУ</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Bebas+Neue&family=DM+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0e0e10;
+    --surface: #16161a;
+    --border: #2a2a32;
+    --accent: #e8ff47;
+    --accent2: #ff6b35;
+    --text: #e8e8f0;
+    --muted: #55556a;
+    --cell-bg: #1c1c22;
+    --given-bg: #121218;
+    --highlight: rgba(232,255,71,0.07);
+    --solve-color: #47ffb2;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    overflow-x: hidden;
+  }
+
+  /* Grain overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.5;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 520px;
+  }
+
+  header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+
+  h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(48px, 12vw, 72px);
+    letter-spacing: 4px;
+    color: var(--accent);
+    line-height: 1;
+  }
+
+  .subtitle {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    align-self: flex-end;
+    padding-bottom: 6px;
+  }
+
+  /* Difficulty */
+  .difficulty-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+
+  .diff-btn {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 6px 14px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .diff-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .diff-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+
+  /* Board */
+  .board-wrapper {
+    position: relative;
+    margin-bottom: 20px;
+  }
+
+  .board {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    gap: 2px;
+    background: var(--border);
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    padding: 2px;
+  }
+
+  /* Thicker borders for 3x3 blocks */
+  .cell {
+    aspect-ratio: 1;
+    background: var(--cell-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'DM Mono', monospace;
+    font-size: clamp(14px, 4vw, 22px);
+    font-weight: 400;
+    color: var(--text);
+    cursor: pointer;
+    position: relative;
+    transition: background 0.15s, color 0.15s;
+    user-select: none;
+    border: 1px solid transparent;
+  }
+
+  .cell.given {
+    background: var(--given-bg);
+    color: var(--muted);
+    cursor: default;
+    font-weight: 500;
+  }
+
+  .cell.selected {
+    background: var(--highlight);
+    border-color: var(--accent);
+    color: var(--accent);
+    z-index: 2;
+  }
+
+  .cell.same-group {
+    background: rgba(255,255,255,0.02);
+  }
+
+  .cell.same-value {
+    background: rgba(232,255,71,0.05);
+  }
+
+  .cell.solving {
+    animation: pulse-solve 0.4s ease;
+    color: var(--solve-color);
+  }
+
+  .cell.error {
+    animation: shake 0.3s ease;
+    color: var(--accent2);
+    background: rgba(255,107,53,0.1);
+  }
+
+  .cell.solved-final {
+    color: var(--solve-color);
+  }
+
+  /* Block borders */
+  .cell[data-col="2"], .cell[data-col="5"] {
+    border-right: 2px solid var(--border);
+    margin-right: 1px;
+  }
+  .cell[data-row="2"], .cell[data-row="5"] {
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 1px;
+  }
+
+  @keyframes pulse-solve {
+    0% { transform: scale(1); background: rgba(71,255,178,0.05); }
+    40% { transform: scale(1.08); background: rgba(71,255,178,0.2); }
+    100% { transform: scale(1); background: var(--cell-bg); }
+  }
+
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
+  }
+
+  /* Technique label */
+  .technique-bar {
+    height: 28px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .technique-bar.visible { opacity: 1; }
+
+  .tech-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--solve-color);
+  }
+
+  .tech-pos {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .tech-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--solve-color);
+    animation: blink 1s infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.2; }
+  }
+
+  /* Controls */
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .btn {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 14px 20px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .btn:hover:not(:disabled) {
+    border-color: var(--text);
+    background: var(--cell-bg);
+  }
+
+  .btn.primary {
+    background: var(--accent);
+    color: var(--bg);
+    border-color: var(--accent);
+    font-weight: 600;
+    grid-column: 1 / -1;
+  }
+
+  .btn.primary:hover:not(:disabled) {
+    background: #d4eb3a;
+    border-color: #d4eb3a;
+  }
+
+  .btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .btn.solving-active {
+    background: var(--solve-color);
+    border-color: var(--solve-color);
+    color: var(--bg);
+  }
+
+  /* Numpad */
+  .numpad {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .num-btn {
+    aspect-ratio: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: clamp(12px, 3vw, 17px);
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .num-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--highlight); }
+
+  /* Status */
+  .status {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    text-align: center;
+    height: 20px;
+  }
+
+  .status.win { color: var(--solve-color); animation: fadeInUp 0.5s ease; }
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Import panel */
+  .import-panel {
+    margin-bottom: 16px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    transition: all 0.3s;
+  }
+
+  .import-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    cursor: pointer;
+    background: var(--surface);
+    user-select: none;
+  }
+
+  .import-header:hover { background: var(--cell-bg); }
+
+  .import-title {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .import-arrow {
+    font-size: 10px;
+    color: var(--muted);
+    transition: transform 0.2s;
+  }
+
+  .import-arrow.open { transform: rotate(180deg); }
+
+  .import-body {
+    display: none;
+    padding: 12px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+  }
+
+  .import-body.open { display: block; }
+
+  .import-textarea {
+    width: 100%;
+    height: 120px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--accent);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    padding: 10px 12px;
+    resize: none;
+    outline: none;
+    letter-spacing: 1px;
+    transition: border-color 0.2s;
+  }
+
+  .import-textarea:focus { border-color: var(--accent); }
+  .import-textarea.error-input { border-color: var(--accent2); }
+
+  .import-hint {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    margin-top: 8px;
+    margin-bottom: 10px;
+  }
+
+  .import-hint span { color: var(--accent); }
+
+  .btn-import {
+    width: 100%;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 10px;
+    border-radius: 4px;
+    border: 1px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-import:hover { background: var(--accent); color: var(--bg); }
+
+  /* Speed control */
+  .speed-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .speed-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  input[type=range] {
+    flex: 1;
+    appearance: none;
+    height: 2px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>СУДОКУ</h1>
+    <span class="subtitle">Решатель · v2</span>
+  </header>
+
+  <div class="difficulty-row">
+    <button class="diff-btn active" data-diff="easy">Лёгкий</button>
+    <button class="diff-btn" data-diff="medium">Средний</button>
+    <button class="diff-btn" data-diff="hard">Сложный</button>
+  </div>
+
+  <!-- Import panel -->
+  <div class="import-panel" id="importPanel">
+    <div class="import-header" id="importHeader">
+      <span class="import-title">↓ Вставить свою позицию</span>
+      <span class="import-arrow" id="importArrow">▼</span>
+    </div>
+    <div class="import-body" id="importBody">
+      <textarea class="import-textarea" id="importText" placeholder="52?41?6??&#10;?9??6????&#10;46?7????5&#10;??42??3?6&#10;??6?4?2??&#10;2?5??6??9&#10;359127864&#10;642??8137&#10;1??634592" spellcheck="false"></textarea>
+      <div class="import-hint">
+        Цифры 1–9, пробелы/точки/нули/<span>?</span> = пустая клетка.<br>
+        9 строк по 9 символов (переносы или слитно).
+      </div>
+      <button class="btn-import" id="importBtn">→ Загрузить на доску</button>
+    </div>
+  </div>
+
+  <div class="board-wrapper">
+    <div class="board" id="board"></div>
+  </div>
+
+  <div class="technique-bar" id="techBar">
+    <div class="tech-dot"></div>
+    <span class="tech-label" id="techLabel"></span>
+    <span class="tech-pos" id="techPos"></span>
+  </div>
+
+  <div class="controls">
+    <button class="btn" id="newBtn">⟳ Новая</button>
+    <button class="btn" id="clearBtn">✕ Очистить</button>
+    <button class="btn primary" id="solveBtn">▶ Решить как профи</button>
+  </div>
+
+  <div class="speed-row">
+    <span class="speed-label">Скорость</span>
+    <input type="range" id="speedSlider" min="1" max="5" value="3">
+    <span class="speed-label" id="speedVal">×3</span>
+  </div>
+
+  <div class="numpad" id="numpad"></div>
+
+  <div class="status" id="status"></div>
+</div>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+let board = Array(81).fill(0);
+let given = Array(81).fill(false);
+let selected = -1;
+let solving = false;
+let solveAbort = false;
+let difficulty = 'easy';
+let speed = 3;
+
+const DIFFICULTIES = { easy: 36, medium: 28, hard: 22 };
+
+// ─── Speed ───────────────────────────────────────────────────────────────────
+const slider = document.getElementById('speedSlider');
+const speedVal = document.getElementById('speedVal');
+slider.addEventListener('input', () => {
+  speed = +slider.value;
+  speedVal.textContent = '×' + speed;
+});
+
+// ─── DOM helpers ─────────────────────────────────────────────────────────────
+function cellEl(i) { return document.getElementById('c' + i); }
+
+function renderBoard() {
+  const boardEl = document.getElementById('board');
+  boardEl.innerHTML = '';
+  for (let i = 0; i < 81; i++) {
+    const el = document.createElement('div');
+    el.className = 'cell' + (given[i] ? ' given' : '');
+    el.id = 'c' + i;
+    el.dataset.row = Math.floor(i / 9);
+    el.dataset.col = i % 9;
+    el.textContent = board[i] || '';
+    el.addEventListener('click', () => selectCell(i));
+    boardEl.appendChild(el);
+  }
+}
+
+function updateCell(i) {
+  const el = cellEl(i);
+  if (!el) return;
+  el.textContent = board[i] || '';
+  el.className = 'cell' + (given[i] ? ' given' : '');
+  if (i === selected) el.classList.add('selected');
+}
+
+function selectCell(i) {
+  if (solving) return;
+  selected = i;
+  refreshHighlights();
+}
+
+function refreshHighlights() {
+  for (let i = 0; i < 81; i++) {
+    const el = cellEl(i);
+    if (!el) continue;
+    el.className = 'cell' + (given[i] ? ' given' : '');
+    if (i === selected) { el.classList.add('selected'); continue; }
+    if (selected >= 0) {
+      const sr = Math.floor(selected / 9), sc = selected % 9;
+      const r = Math.floor(i / 9), c = i % 9;
+      const sameGroup = r === sr || c === sc ||
+        (Math.floor(r/3) === Math.floor(sr/3) && Math.floor(c/3) === Math.floor(sc/3));
+      if (sameGroup) el.classList.add('same-group');
+      if (board[selected] && board[i] === board[selected]) el.classList.add('same-value');
+    }
+  }
+}
+
+// ─── Sudoku logic ─────────────────────────────────────────────────────────────
+function isValid(b, i, v) {
+  const r = Math.floor(i/9), c = i%9;
+  for (let j = 0; j < 9; j++) {
+    if (b[r*9+j] === v) return false;
+    if (b[j*9+c] === v) return false;
+    const br = Math.floor(r/3)*3 + Math.floor(j/3);
+    const bc = Math.floor(c/3)*3 + j%3;
+    if (b[br*9+bc] === v) return false;
+  }
+  return true;
+}
+
+function getCandidates(b, i) {
+  if (b[i]) return new Set();
+  const s = new Set([1,2,3,4,5,6,7,8,9]);
+  const r = Math.floor(i/9), c = i%9;
+  for (let j = 0; j < 9; j++) {
+    s.delete(b[r*9+j]);
+    s.delete(b[j*9+c]);
+    const br = Math.floor(r/3)*3 + Math.floor(j/3);
+    const bc = Math.floor(c/3)*3 + j%3;
+    s.delete(b[br*9+bc]);
+  }
+  return s;
+}
+
+function solve(b) {
+  const empty = b.indexOf(0);
+  if (empty === -1) return true;
+  for (let v = 1; v <= 9; v++) {
+    if (isValid(b, empty, v)) {
+      b[empty] = v;
+      if (solve(b)) return true;
+      b[empty] = 0;
+    }
+  }
+  return false;
+}
+
+function countSolutions(b, limit = 2) {
+  let count = 0;
+  function bt(b) {
+    if (count >= limit) return;
+    const empty = b.indexOf(0);
+    if (empty === -1) { count++; return; }
+    for (let v = 1; v <= 9; v++) {
+      if (isValid(b, empty, v)) {
+        b[empty] = v;
+        bt(b);
+        b[empty] = 0;
+      }
+    }
+  }
+  bt([...b]);
+  return count;
+}
+
+function generatePuzzle(diff) {
+  // Fill full solution
+  const sol = Array(81).fill(0);
+  const cells = Array.from({length:81},(_,i)=>i).sort(()=>Math.random()-0.5);
+  solve(sol);
+  // Shuffle solution rows within bands etc for variety
+  const puzzle = [...sol];
+  const clues = DIFFICULTIES[diff];
+  const toRemove = 81 - clues;
+  const order = Array.from({length:81},(_,i)=>i).sort(()=>Math.random()-0.5);
+  let removed = 0;
+  for (const idx of order) {
+    if (removed >= toRemove) break;
+    const backup = puzzle[idx];
+    puzzle[idx] = 0;
+    if (countSolutions(puzzle) === 1) {
+      removed++;
+    } else {
+      puzzle[idx] = backup;
+    }
+  }
+  return puzzle;
+}
+
+// ─── Generate & new game ─────────────────────────────────────────────────────
+function newGame() {
+  if (solving) { solveAbort = true; }
+  document.getElementById('status').textContent = 'Генерация...';
+  document.getElementById('status').className = 'status';
+  setTimeout(() => {
+    board = generatePuzzle(difficulty);
+    given = board.map(v => v !== 0);
+    selected = -1;
+    document.getElementById('solveBtn').disabled = false;
+    document.getElementById('solveBtn').className = 'btn primary';
+    document.getElementById('solveBtn').textContent = '▶ Решить как профи';
+    hideTechBar();
+    renderBoard();
+    document.getElementById('status').textContent = '';
+  }, 30);
+}
+
+function clearUserInput() {
+  if (solving) return;
+  for (let i = 0; i < 81; i++) {
+    if (!given[i]) board[i] = 0;
+  }
+  renderBoard();
+  document.getElementById('status').textContent = '';
+}
+
+// ─── Animated solver ─────────────────────────────────────────────────────────
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const SPEED_MS = () => Math.round(600 / (speed * speed));
+
+function showTech(label, pos) {
+  const bar = document.getElementById('techBar');
+  document.getElementById('techLabel').textContent = label;
+  document.getElementById('techPos').textContent = pos || '';
+  bar.classList.add('visible');
+}
+
+function hideTechBar() {
+  document.getElementById('techBar').classList.remove('visible');
+}
+
+async function animatedSolve() {
+  if (solving) {
+    solveAbort = true;
+    return;
+  }
+  // Reset user cells
+  for (let i = 0; i < 81; i++) if (!given[i]) board[i] = 0;
+  renderBoard();
+
+  solving = true;
+  solveAbort = false;
+  selected = -1;
+
+  const btn = document.getElementById('solveBtn');
+  btn.textContent = '■ Остановить';
+  btn.className = 'btn primary solving-active';
+  document.getElementById('newBtn').disabled = true;
+  document.getElementById('clearBtn').disabled = true;
+  document.getElementById('status').textContent = '';
+
+  const steps = [];
+  buildSteps([...board], steps);
+
+  for (const step of steps) {
+    if (solveAbort) break;
+    board[step.idx] = step.val;
+    updateCell(step.idx);
+
+    const el = cellEl(step.idx);
+    if (el) {
+      el.classList.add('solving');
+      setTimeout(() => el && el.classList.remove('solving'), 350);
+    }
+    showTech(step.tech, `R${Math.floor(step.idx/9)+1}C${step.idx%9+1}`);
+    await sleep(SPEED_MS());
+  }
+
+  hideTechBar();
+  solving = false;
+  btn.className = 'btn primary';
+  btn.textContent = '▶ Решить как профи';
+  document.getElementById('newBtn').disabled = false;
+  document.getElementById('clearBtn').disabled = false;
+
+  if (!solveAbort) {
+    // Mark all solved cells green
+    for (let i = 0; i < 81; i++) {
+      if (!given[i] && board[i]) {
+        const el = cellEl(i);
+        if (el) el.classList.add('solved-final');
+      }
+    }
+    document.getElementById('status').textContent = '✓ Решено!';
+    document.getElementById('status').className = 'status win';
+  }
+}
+
+// ─── Build steps using logic techniques ──────────────────────────────────────
+function buildSteps(b, steps) {
+  let progress = true;
+  while (progress) {
+    progress = false;
+
+    // 1. Naked Single — only one candidate in a cell
+    for (let i = 0; i < 81; i++) {
+      if (b[i]) continue;
+      const cands = getCandidates(b, i);
+      if (cands.size === 1) {
+        const val = [...cands][0];
+        steps.push({ idx: i, val, tech: 'Naked Single' });
+        b[i] = val;
+        progress = true;
+      }
+    }
+
+    // 2. Hidden Single — digit can go in only one cell in row/col/block
+    for (let unit = 0; unit < 27; unit++) {
+      const cells = getUnit(unit);
+      for (let v = 1; v <= 9; v++) {
+        const possible = cells.filter(i => !b[i] && isValid(b, i, v));
+        if (possible.length === 1) {
+          const i = possible[0];
+          steps.push({ idx: i, val: v, tech: 'Hidden Single' });
+          b[i] = v;
+          progress = true;
+        }
+      }
+    }
+  }
+
+  // If still not solved, use backtracking (show as "Backtrack")
+  if (b.includes(0)) {
+    backtrackSteps(b, steps);
+  }
+}
+
+function getUnit(unit) {
+  const cells = [];
+  if (unit < 9) { // rows
+    for (let c = 0; c < 9; c++) cells.push(unit*9+c);
+  } else if (unit < 18) { // cols
+    const c = unit - 9;
+    for (let r = 0; r < 9; r++) cells.push(r*9+c);
+  } else { // blocks
+    const b = unit - 18;
+    const br = Math.floor(b/3)*3, bc = (b%3)*3;
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) cells.push((br+r)*9+(bc+c));
+  }
+  return cells;
+}
+
+function backtrackSteps(b, steps) {
+  const empty = b.indexOf(0);
+  if (empty === -1) return true;
+  for (let v = 1; v <= 9; v++) {
+    if (isValid(b, empty, v)) {
+      steps.push({ idx: empty, val: v, tech: 'Перебор (Backtrack)' });
+      b[empty] = v;
+      if (backtrackSteps(b, steps)) return true;
+      // undo (don't animate undo for simplicity, just solve correctly)
+      steps.push({ idx: empty, val: 0, tech: 'Откат' });
+      b[empty] = 0;
+    }
+  }
+  return false;
+}
+
+// ─── Numpad ───────────────────────────────────────────────────────────────────
+function buildNumpad() {
+  const np = document.getElementById('numpad');
+  for (let v = 1; v <= 9; v++) {
+    const btn = document.createElement('button');
+    btn.className = 'num-btn';
+    btn.textContent = v;
+    btn.addEventListener('click', () => inputNum(v));
+    np.appendChild(btn);
+  }
+}
+
+function inputNum(v) {
+  if (solving || selected < 0 || given[selected]) return;
+  if (!isValid(board, selected, v) && v !== 0) {
+    const el = cellEl(selected);
+    board[selected] = v;
+    updateCell(selected);
+    el && el.classList.add('error');
+    setTimeout(() => { el && el.classList.remove('error'); board[selected] = 0; updateCell(selected); }, 600);
+    return;
+  }
+  board[selected] = v;
+  updateCell(selected);
+  refreshHighlights();
+  checkWin();
+}
+
+document.addEventListener('keydown', e => {
+  if (solving) return;
+  if (e.key >= '1' && e.key <= '9') inputNum(+e.key);
+  if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') inputNum(0);
+  // Arrow navigation
+  if (selected >= 0) {
+    const moves = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 9, ArrowUp: -9 };
+    if (moves[e.key] !== undefined) {
+      const next = selected + moves[e.key];
+      if (next >= 0 && next < 81) { selected = next; refreshHighlights(); }
+    }
+  }
+});
+
+function checkWin() {
+  if (board.includes(0)) return;
+  for (let i = 0; i < 81; i++) if (!isValid([...board.slice(0,i), 0, ...board.slice(i+1)], i, board[i])) return;
+  document.getElementById('status').textContent = '✓ Решено! Молодец!';
+  document.getElementById('status').className = 'status win';
+}
+
+// ─── Import panel ─────────────────────────────────────────────────────────────
+document.getElementById('importHeader').addEventListener('click', () => {
+  const body = document.getElementById('importBody');
+  const arrow = document.getElementById('importArrow');
+  const open = body.classList.toggle('open');
+  arrow.classList.toggle('open', open);
+});
+
+document.getElementById('importBtn').addEventListener('click', () => {
+  const raw = document.getElementById('importText').value;
+  const textarea = document.getElementById('importText');
+
+  // Extract only digit/placeholder chars
+  const digits = raw.replace(/[^0-9.?_ ]/g, c => /\n|\r/.test(c) ? '' : c)
+    .split('').filter(c => /[0-9.?_ ]/.test(c));
+
+  // Normalize: digits stay, everything else → 0
+  const nums = [];
+  for (const c of raw) {
+    if (c >= '1' && c <= '9') nums.push(+c);
+    else if (c === '0' || c === '.' || c === '?' || c === '_' || c === ' ') nums.push(0);
+    // skip newlines and other chars
+  }
+
+  if (nums.length !== 81) {
+    textarea.classList.add('error-input');
+    document.getElementById('status').textContent = `Ошибка: распознано ${nums.length} клеток, нужно 81`;
+    document.getElementById('status').className = 'status';
+    setTimeout(() => textarea.classList.remove('error-input'), 1000);
+    return;
+  }
+
+  textarea.classList.remove('error-input');
+
+  if (solving) { solveAbort = true; }
+  board = [...nums];
+  given = board.map(v => v !== 0);
+  selected = -1;
+
+  document.getElementById('solveBtn').disabled = false;
+  document.getElementById('solveBtn').className = 'btn primary';
+  document.getElementById('solveBtn').textContent = '▶ Решить как профи';
+  hideTechBar();
+  renderBoard();
+  document.getElementById('status').textContent = `✓ Загружено (${given.filter(Boolean).length} подсказок)`;
+  document.getElementById('status').className = 'status win';
+
+  // Close panel
+  document.getElementById('importBody').classList.remove('open');
+  document.getElementById('importArrow').classList.remove('open');
+});
+
+// ─── Difficulty buttons ───────────────────────────────────────────────────────
+document.querySelectorAll('.diff-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    difficulty = btn.dataset.diff;
+    newGame();
+  });
+});
+
+document.getElementById('newBtn').addEventListener('click', newGame);
+document.getElementById('clearBtn').addEventListener('click', clearUserInput);
+document.getElementById('solveBtn').addEventListener('click', animatedSolve);
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+buildNumpad();
+newGame();
+</script>
+</body>
+</html>
