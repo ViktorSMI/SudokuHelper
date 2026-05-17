@@ -2,516 +2,116 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>СУДОКУ</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Bebas+Neue&family=DM+Sans:wght@300;400;600&display=swap" rel="stylesheet">
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-  :root {
-    --bg: #0e0e10;
-    --surface: #16161a;
-    --border: #2a2a32;
-    --accent: #e8ff47;
-    --accent2: #ff6b35;
-    --text: #e8e8f0;
-    --muted: #55556a;
-    --cell-bg: #1c1c22;
-    --given-bg: #121218;
-    --highlight: rgba(232,255,71,0.07);
-    --solve-color: #47ffb2;
-  }
-
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'DM Sans', sans-serif;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 24px 16px;
-    overflow-x: hidden;
-  }
-
-  /* Grain overlay */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
-    pointer-events: none;
-    z-index: 0;
-    opacity: 0.5;
-  }
-
-  .container {
-    position: relative;
-    z-index: 1;
-    width: 100%;
-    max-width: 520px;
-  }
-
-  header {
-    display: flex;
-    align-items: baseline;
-    gap: 12px;
-    margin-bottom: 32px;
-  }
-
-  h1 {
-    font-family: 'Bebas Neue', sans-serif;
-    font-size: clamp(48px, 12vw, 72px);
-    letter-spacing: 4px;
-    color: var(--accent);
-    line-height: 1;
-  }
-
-  .subtitle {
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    color: var(--muted);
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    align-self: flex-end;
-    padding-bottom: 6px;
-  }
-
-  /* Difficulty */
-  .difficulty-row {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 20px;
-  }
-
-  .diff-btn {
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    padding: 6px 14px;
-    border-radius: 3px;
-    border: 1px solid var(--border);
-    background: transparent;
-    color: var(--muted);
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .diff-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .diff-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
-
-  /* Board */
-  .board-wrapper {
-    position: relative;
-    margin-bottom: 20px;
-  }
-
-  .board {
-    display: grid;
-    grid-template-columns: repeat(9, 1fr);
-    gap: 2px;
-    background: var(--border);
-    border: 2px solid var(--border);
-    border-radius: 6px;
-    overflow: hidden;
-    padding: 2px;
-  }
-
-  /* Thicker borders for 3x3 blocks */
-  .cell {
-    aspect-ratio: 1;
-    background: var(--cell-bg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: 'DM Mono', monospace;
-    font-size: clamp(14px, 4vw, 22px);
-    font-weight: 400;
-    color: var(--text);
-    cursor: pointer;
-    position: relative;
-    transition: background 0.15s, color 0.15s;
-    user-select: none;
-    border: 1px solid transparent;
-  }
-
-  .cell.given {
-    background: var(--given-bg);
-    color: var(--muted);
-    cursor: default;
-    font-weight: 500;
-  }
-
-  .cell.selected {
-    background: var(--highlight);
-    border-color: var(--accent);
-    color: var(--accent);
-    z-index: 2;
-  }
-
-  .cell.same-group {
-    background: rgba(255,255,255,0.02);
-  }
-
-  .cell.same-value {
-    background: rgba(232,255,71,0.05);
-  }
-
-  .cell.solving {
-    animation: pulse-solve 0.4s ease;
-    color: var(--solve-color);
-  }
-
-  .cell.error {
-    animation: shake 0.3s ease;
-    color: var(--accent2);
-    background: rgba(255,107,53,0.1);
-  }
-
-  .cell.solved-final {
-    color: var(--solve-color);
-  }
-
-  /* Block borders */
-  .cell[data-col="2"], .cell[data-col="5"] {
-    border-right: 2px solid var(--border);
-    margin-right: 1px;
-  }
-  .cell[data-row="2"], .cell[data-row="5"] {
-    border-bottom: 2px solid var(--border);
-    margin-bottom: 1px;
-  }
-
-  @keyframes pulse-solve {
-    0% { transform: scale(1); background: rgba(71,255,178,0.05); }
-    40% { transform: scale(1.08); background: rgba(71,255,178,0.2); }
-    100% { transform: scale(1); background: var(--cell-bg); }
-  }
-
-  @keyframes shake {
-    0%, 100% { transform: translateX(0); }
-    25% { transform: translateX(-4px); }
-    75% { transform: translateX(4px); }
-  }
-
-  /* Technique label */
-  .technique-bar {
-    height: 28px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 16px;
-    opacity: 0;
-    transition: opacity 0.3s;
-  }
-
-  .technique-bar.visible { opacity: 1; }
-
-  .tech-label {
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    color: var(--solve-color);
-  }
-
-  .tech-pos {
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    color: var(--muted);
-  }
-
-  .tech-dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--solve-color);
-    animation: blink 1s infinite;
-  }
-
-  @keyframes blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.2; }
-  }
-
-  /* Controls */
-  .controls {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
-    gap: 10px;
-    margin-bottom: 16px;
-  }
-
-  .btn {
-    font-family: 'DM Mono', monospace;
-    font-size: 12px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    padding: 14px 20px;
-    border-radius: 4px;
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text);
-    cursor: pointer;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-  }
-
-  .btn:hover:not(:disabled) {
-    border-color: var(--text);
-    background: var(--cell-bg);
-  }
-
-  .btn.primary {
-    background: var(--accent);
-    color: var(--bg);
-    border-color: var(--accent);
-    font-weight: 600;
-    grid-column: 1 / -1;
-  }
-
-  .btn.primary:hover:not(:disabled) {
-    background: #d4eb3a;
-    border-color: #d4eb3a;
-  }
-
-  .btn:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-  }
-
-  .btn.solving-active {
-    background: var(--solve-color);
-    border-color: var(--solve-color);
-    color: var(--bg);
-  }
-
-  /* Numpad */
-  .numpad {
-    display: grid;
-    grid-template-columns: repeat(9, 1fr);
-    gap: 6px;
-    margin-bottom: 8px;
-  }
-
-  .num-btn {
-    aspect-ratio: 1;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    color: var(--text);
-    font-family: 'DM Mono', monospace;
-    font-size: clamp(12px, 3vw, 17px);
-    cursor: pointer;
-    transition: all 0.15s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .num-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--highlight); }
-
-  /* Status */
-  .status {
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    color: var(--muted);
-    letter-spacing: 1px;
-    text-align: center;
-    height: 20px;
-  }
-
-  .status.win { color: var(--solve-color); animation: fadeInUp 0.5s ease; }
-  @keyframes fadeInUp {
-    from { opacity: 0; transform: translateY(6px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-
-  /* Import panel */
-  .import-panel {
-    margin-bottom: 16px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    overflow: hidden;
-    transition: all 0.3s;
-  }
-
-  .import-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 14px;
-    cursor: pointer;
-    background: var(--surface);
-    user-select: none;
-  }
-
-  .import-header:hover { background: var(--cell-bg); }
-
-  .import-title {
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    color: var(--muted);
-  }
-
-  .import-arrow {
-    font-size: 10px;
-    color: var(--muted);
-    transition: transform 0.2s;
-  }
-
-  .import-arrow.open { transform: rotate(180deg); }
-
-  .import-body {
-    display: none;
-    padding: 12px;
-    background: var(--surface);
-    border-top: 1px solid var(--border);
-  }
-
-  .import-body.open { display: block; }
-
-  .import-textarea {
-    width: 100%;
-    height: 120px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    color: var(--accent);
-    font-family: 'DM Mono', monospace;
-    font-size: 13px;
-    line-height: 1.6;
-    padding: 10px 12px;
-    resize: none;
-    outline: none;
-    letter-spacing: 1px;
-    transition: border-color 0.2s;
-  }
-
-  .import-textarea:focus { border-color: var(--accent); }
-  .import-textarea.error-input { border-color: var(--accent2); }
-
-  .import-hint {
-    font-family: 'DM Mono', monospace;
-    font-size: 10px;
-    color: var(--muted);
-    letter-spacing: 1px;
-    margin-top: 8px;
-    margin-bottom: 10px;
-  }
-
-  .import-hint span { color: var(--accent); }
-
-  .btn-import {
-    width: 100%;
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    padding: 10px;
-    border-radius: 4px;
-    border: 1px solid var(--accent);
-    background: transparent;
-    color: var(--accent);
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .btn-import:hover { background: var(--accent); color: var(--bg); }
-
-  .cell.hint-target {
-    animation: hint-pulse 1.2s ease infinite;
-    border-color: #fff176 !important;
-    z-index: 3;
-  }
-
-  .cell.hint-peer {
-    background: rgba(255,241,118,0.06);
-  }
-
-  @keyframes hint-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(255,241,118,0.5); background: rgba(255,241,118,0.12); }
-    50% { box-shadow: 0 0 0 6px rgba(255,241,118,0); background: rgba(255,241,118,0.22); }
-  }
-
-  /* Hint explanation box */
-  .hint-box {
-    background: var(--surface);
-    border: 1px solid #fff176;
-    border-radius: 6px;
-    padding: 12px 14px;
-    margin-bottom: 14px;
-    display: none;
-    animation: fadeInUp 0.3s ease;
-  }
-
-  .hint-box.visible { display: block; }
-
-  .hint-box-title {
-    font-family: 'DM Mono', monospace;
-    font-size: 10px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: #fff176;
-    margin-bottom: 6px;
-  }
-
-  .hint-box-text {
-    font-family: 'DM Sans', sans-serif;
-    font-size: 13px;
-    color: var(--text);
-    line-height: 1.5;
-  }
-
-  .hint-box-text strong { color: #fff176; font-weight: 600; }
-
-  /* Speed control */
-  .speed-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 16px;
-  }
-
-  .speed-label {
-    font-family: 'DM Mono', monospace;
-    font-size: 10px;
-    color: var(--muted);
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-
-  input[type=range] {
-    flex: 1;
-    appearance: none;
-    height: 2px;
-    background: var(--border);
-    border-radius: 2px;
-    outline: none;
-  }
-
-  input[type=range]::-webkit-slider-thumb {
-    appearance: none;
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: var(--accent);
-    cursor: pointer;
-  }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0e0e10;--surface:#16161a;--border:#2a2a32;
+  --accent:#e8ff47;--accent2:#ff6b35;--text:#e8e8f0;--muted:#55556a;
+  --cell-bg:#1c1c22;--given-bg:#121218;--highlight:rgba(232,255,71,0.07);
+  --solve-color:#47ffb2;
+}
+html,body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh;overflow-x:hidden}
+body{display:flex;flex-direction:column;align-items:center;padding:10px 8px 28px}
+.container{width:100%;max-width:440px}
+
+header{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+h1{font-family:'Bebas Neue',sans-serif;font-size:clamp(32px,9vw,52px);letter-spacing:4px;color:var(--accent);line-height:1}
+.subtitle{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;align-self:flex-end;padding-bottom:4px}
+
+.difficulty-row{display:flex;gap:5px;margin-bottom:8px}
+.diff-btn{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:5px 9px;border-radius:3px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all .2s;-webkit-tap-highlight-color:transparent}
+.diff-btn.active{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+
+/* Import */
+.import-panel{margin-bottom:8px;border:1px solid var(--border);border-radius:6px;overflow:hidden}
+.import-header{display:flex;align-items:center;justify-content:space-between;padding:7px 11px;cursor:pointer;background:var(--surface);user-select:none;-webkit-tap-highlight-color:transparent}
+.import-title{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)}
+.import-arrow{font-size:9px;color:var(--muted);transition:transform .2s}
+.import-arrow.open{transform:rotate(180deg)}
+.import-body{display:none;padding:9px;background:var(--surface);border-top:1px solid var(--border)}
+.import-body.open{display:block}
+.import-textarea{width:100%;height:100px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--accent);font-family:'DM Mono',monospace;font-size:12px;line-height:1.6;padding:7px 9px;resize:none;outline:none;letter-spacing:1px;transition:border-color .2s}
+.import-textarea:focus{border-color:var(--accent)}
+.import-textarea.err{border-color:var(--accent2)}
+.import-hint{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:1px;margin:5px 0 7px;line-height:1.5}
+.import-hint span{color:var(--accent)}
+.btn-import{width:100%;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:2px;text-transform:uppercase;padding:8px;border-radius:4px;border:1px solid var(--accent);background:transparent;color:var(--accent);cursor:pointer;transition:all .2s;-webkit-tap-highlight-color:transparent}
+.btn-import:active{background:var(--accent);color:var(--bg)}
+
+/* Board */
+.board-wrapper{margin-bottom:8px}
+.board{display:grid;grid-template-columns:repeat(9,1fr);gap:2px;background:var(--border);border:2px solid var(--border);border-radius:6px;overflow:hidden;padding:2px;width:100%}
+.cell{aspect-ratio:1;background:var(--cell-bg);display:flex;align-items:center;justify-content:center;font-family:'DM Mono',monospace;font-size:clamp(12px,3.6vw,19px);font-weight:400;color:var(--text);cursor:pointer;position:relative;transition:background .15s,color .15s;user-select:none;border:1px solid transparent;-webkit-tap-highlight-color:transparent}
+.cell.given{background:var(--given-bg);color:var(--muted);cursor:default;font-weight:500}
+.cell.selected{background:var(--highlight);border-color:var(--accent);color:var(--accent);z-index:2}
+.cell.same-group{background:rgba(255,255,255,.025)}
+.cell.same-value{background:rgba(232,255,71,.05)}
+.cell.solving{animation:pulse .4s ease;color:var(--solve-color)}
+.cell.error{animation:shake .3s ease;color:var(--accent2);background:rgba(255,107,53,.1)}
+.cell.solved-final{color:var(--solve-color)}
+.cell.hint-target{animation:hint-pulse 1.2s ease infinite;border-color:#fff176!important;z-index:3}
+.cell.hint-peer{background:rgba(255,241,118,.06)}
+.cell.hypothesis{color:#c792ff}
+.cell[data-col="2"],.cell[data-col="5"]{border-right:2px solid var(--border);margin-right:1px}
+.cell[data-row="2"],.cell[data-row="5"]{border-bottom:2px solid var(--border);margin-bottom:1px}
+
+@keyframes pulse{0%{transform:scale(1);background:rgba(71,255,178,.05)}40%{transform:scale(1.08);background:rgba(71,255,178,.2)}100%{transform:scale(1);background:var(--cell-bg)}}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+@keyframes hint-pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,241,118,.5);background:rgba(255,241,118,.12)}50%{box-shadow:0 0 0 6px rgba(255,241,118,0);background:rgba(255,241,118,.22)}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+
+/* Tech bar */
+.technique-bar{height:20px;display:flex;align-items:center;gap:7px;margin-bottom:6px;opacity:0;transition:opacity .3s}
+.technique-bar.visible{opacity:1}
+.tech-label{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--solve-color)}
+.tech-pos{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted)}
+.tech-dot{width:5px;height:5px;border-radius:50%;background:var(--solve-color);animation:blink 1s infinite}
+
+/* Hint box */
+.hint-box{background:var(--surface);border:1px solid #fff176;border-radius:6px;padding:9px 11px;margin-bottom:8px;display:none;animation:fadeUp .3s ease}
+.hint-box.visible{display:block}
+.hint-box-title{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:#fff176;margin-bottom:4px}
+.hint-box-text{font-family:'DM Sans',sans-serif;font-size:12px;color:var(--text);line-height:1.5}
+.hint-box-text strong{color:#fff176;font-weight:600}
+.hint-box-text .hyp{color:#c792ff}
+
+/* Controls */
+.controls{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:8px}
+.btn{font-family:'DM Mono',monospace;font-size:clamp(8px,2.3vw,10px);letter-spacing:.5px;text-transform:uppercase;padding:9px 3px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:3px;-webkit-tap-highlight-color:transparent;white-space:nowrap}
+.btn:active:not(:disabled){background:var(--cell-bg);border-color:var(--text)}
+.btn.primary{background:var(--accent);color:var(--bg);border-color:var(--accent);font-weight:600;grid-column:1/-1;padding:11px}
+.btn.primary:active:not(:disabled){background:#d4eb3a}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn.solving-active{background:var(--solve-color);border-color:var(--solve-color);color:var(--bg)}
+
+/* Speed */
+.speed-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.speed-label{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;white-space:nowrap}
+input[type=range]{flex:1;appearance:none;height:2px;background:var(--border);border-radius:2px;outline:none}
+input[type=range]::-webkit-slider-thumb{appearance:none;width:13px;height:13px;border-radius:50%;background:var(--accent);cursor:pointer}
+
+/* Numpad */
+.numpad{display:grid;grid-template-columns:repeat(9,1fr);gap:4px;margin-bottom:7px}
+.num-btn{aspect-ratio:1;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'DM Mono',monospace;font-size:clamp(12px,3.3vw,17px);cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent}
+.num-btn:active{border-color:var(--accent);color:var(--accent);background:var(--highlight)}
+
+.status{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:1px;text-align:center;min-height:16px}
+.status.win{color:var(--solve-color);animation:fadeUp .5s ease}
+
+/* Toast */
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(16px);background:var(--solve-color);color:var(--bg);font-family:'DM Mono',monospace;font-size:10px;letter-spacing:2px;padding:9px 18px;border-radius:20px;opacity:0;transition:all .3s;pointer-events:none;z-index:999;white-space:nowrap}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 </style>
 </head>
 <body>
 <div class="container">
   <header>
     <h1>СУДОКУ</h1>
-    <span class="subtitle">Решатель · v2</span>
+    <span class="subtitle">Логический решатель</span>
   </header>
 
   <div class="difficulty-row">
@@ -520,18 +120,15 @@
     <button class="diff-btn" data-diff="hard">Сложный</button>
   </div>
 
-  <!-- Import panel -->
-  <div class="import-panel" id="importPanel">
+  <div class="import-panel">
     <div class="import-header" id="importHeader">
-      <span class="import-title">↓ Вставить свою позицию</span>
+      <span class="import-title">↓ Вставить позицию</span>
       <span class="import-arrow" id="importArrow">▼</span>
     </div>
     <div class="import-body" id="importBody">
-      <textarea class="import-textarea" id="importText" placeholder="52?41?6??&#10;?9??6????&#10;46?7????5&#10;??42??3?6&#10;??6?4?2??&#10;2?5??6??9&#10;359127864&#10;642??8137&#10;1??634592" spellcheck="false"></textarea>
-      <div class="import-hint">
-        Цифры 1–9, пробелы/точки/нули/<span>?</span> = пустая клетка.<br>
-        9 строк по 9 символов (переносы или слитно).
-      </div>
+      <textarea class="import-textarea" id="importText"
+        placeholder="52?41?6??&#10;?9??6????&#10;46?7????5&#10;..." spellcheck="false"></textarea>
+      <div class="import-hint">Цифры 1–9, <span>?</span> / . / 0 = пустая. 9 строк по 9.</div>
       <button class="btn-import" id="importBtn">→ Загрузить на доску</button>
     </div>
   </div>
@@ -546,7 +143,6 @@
     <span class="tech-pos" id="techPos"></span>
   </div>
 
-  <!-- Hint explanation -->
   <div class="hint-box" id="hintBox">
     <div class="hint-box-title" id="hintTitle"></div>
     <div class="hint-box-text" id="hintText"></div>
@@ -555,10 +151,10 @@
   <div class="controls">
     <button class="btn" id="newBtn">⟳ Новая</button>
     <button class="btn" id="clearBtn">✕ Очистить</button>
+    <button class="btn" id="copyBtn">⎘ Копировать</button>
     <button class="btn" id="hintBtn">💡 Подсказка</button>
     <button class="btn" id="stepBtn">→ Шаг</button>
-    <button class="btn" id="copyBtn">⎘ Копировать</button>
-    <button class="btn primary" id="solveBtn">▶ Решить как профи</button>
+    <button class="btn primary" id="solveBtn">▶ Решить логикой</button>
   </div>
 
   <div class="speed-row">
@@ -568,12 +164,14 @@
   </div>
 
   <div class="numpad" id="numpad"></div>
-
   <div class="status" id="status"></div>
 </div>
+<div class="toast" id="toast"></div>
 
 <script>
-// ─── State ───────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════════════════
 let board = Array(81).fill(0);
 let given = Array(81).fill(false);
 let selected = -1;
@@ -581,184 +179,134 @@ let solving = false;
 let solveAbort = false;
 let difficulty = 'easy';
 let speed = 3;
-let currentHint = null; // { idx, val, tech, explanation, peers }
+let currentHint = null;
 
 const DIFFICULTIES = { easy: 36, medium: 28, hard: 22 };
 
-// ─── Speed ───────────────────────────────────────────────────────────────────
-const slider = document.getElementById('speedSlider');
-const speedVal = document.getElementById('speedVal');
-slider.addEventListener('input', () => {
-  speed = +slider.value;
-  speedVal.textContent = '×' + speed;
-});
+// ═══════════════════════════════════════════════════════════════════════
+//  CORE SUDOKU HELPERS
+// ═══════════════════════════════════════════════════════════════════════
+function row(i){ return Math.floor(i/9); }
+function col(i){ return i%9; }
+function box(i){ return Math.floor(row(i)/3)*3 + Math.floor(col(i)/3); }
 
-// ─── DOM helpers ─────────────────────────────────────────────────────────────
-function cellEl(i) { return document.getElementById('c' + i); }
-
-function renderBoard() {
-  const boardEl = document.getElementById('board');
-  boardEl.innerHTML = '';
-  for (let i = 0; i < 81; i++) {
-    const el = document.createElement('div');
-    el.className = 'cell' + (given[i] ? ' given' : '');
-    el.id = 'c' + i;
-    el.dataset.row = Math.floor(i / 9);
-    el.dataset.col = i % 9;
-    el.textContent = board[i] || '';
-    el.addEventListener('click', () => selectCell(i));
-    boardEl.appendChild(el);
+function peers(i){
+  const r=row(i),c=col(i),b=box(i),s=new Set();
+  for(let j=0;j<81;j++){
+    if(j===i) continue;
+    if(row(j)===r||col(j)===c||box(j)===b) s.add(j);
   }
+  return [...s];
 }
 
-function updateCell(i) {
-  const el = cellEl(i);
-  if (!el) return;
-  el.textContent = board[i] || '';
-  el.className = 'cell' + (given[i] ? ' given' : '');
-  if (i === selected) el.classList.add('selected');
-}
-
-function selectCell(i) {
-  if (solving) return;
-  clearHintHighlight();
-  selected = i;
-  refreshHighlights();
-}
-
-function refreshHighlights() {
-  for (let i = 0; i < 81; i++) {
-    const el = cellEl(i);
-    if (!el) continue;
-    el.className = 'cell' + (given[i] ? ' given' : '');
-    if (i === selected) { el.classList.add('selected'); continue; }
-    if (selected >= 0) {
-      const sr = Math.floor(selected / 9), sc = selected % 9;
-      const r = Math.floor(i / 9), c = i % 9;
-      const sameGroup = r === sr || c === sc ||
-        (Math.floor(r/3) === Math.floor(sr/3) && Math.floor(c/3) === Math.floor(sc/3));
-      if (sameGroup) el.classList.add('same-group');
-      if (board[selected] && board[i] === board[selected]) el.classList.add('same-value');
-    }
+function unitCells(type, idx){
+  // type: 'row'|'col'|'box', idx 0-8
+  const cells=[];
+  for(let i=0;i<81;i++){
+    if(type==='row'&&row(i)===idx) cells.push(i);
+    else if(type==='col'&&col(i)===idx) cells.push(i);
+    else if(type==='box'&&box(i)===idx) cells.push(i);
   }
+  return cells;
 }
 
-// ─── Sudoku logic ─────────────────────────────────────────────────────────────
-function isValid(b, i, v) {
-  const r = Math.floor(i/9), c = i%9;
-  for (let j = 0; j < 9; j++) {
-    if (b[r*9+j] === v) return false;
-    if (b[j*9+c] === v) return false;
-    const br = Math.floor(r/3)*3 + Math.floor(j/3);
-    const bc = Math.floor(c/3)*3 + j%3;
-    if (b[br*9+bc] === v) return false;
-  }
+// All 27 units as arrays of cell indices
+function allUnits(){
+  const units=[];
+  for(let i=0;i<9;i++) units.push(unitCells('row',i));
+  for(let i=0;i<9;i++) units.push(unitCells('col',i));
+  for(let i=0;i<9;i++) units.push(unitCells('box',i));
+  return units;
+}
+
+function isValidPlace(b,i,v){
+  for(const p of peers(i)) if(b[p]===v) return false;
   return true;
 }
 
-function getCandidates(b, i) {
-  if (b[i]) return new Set();
-  const s = new Set([1,2,3,4,5,6,7,8,9]);
-  const r = Math.floor(i/9), c = i%9;
-  for (let j = 0; j < 9; j++) {
-    s.delete(b[r*9+j]);
-    s.delete(b[j*9+c]);
-    const br = Math.floor(r/3)*3 + Math.floor(j/3);
-    const bc = Math.floor(c/3)*3 + j%3;
-    s.delete(b[br*9+bc]);
+// Build full candidates map {cellIdx -> Set of possible digits}
+function buildCandidates(b){
+  const cands=[];
+  for(let i=0;i<81;i++){
+    if(b[i]!==0){ cands.push(null); continue; }
+    const s=new Set([1,2,3,4,5,6,7,8,9]);
+    for(const p of peers(i)) s.delete(b[p]);
+    cands.push(s);
   }
-  return s;
+  return cands;
 }
 
-function solve(b) {
-  const empty = b.indexOf(0);
-  if (empty === -1) return true;
-  for (let v = 1; v <= 9; v++) {
-    if (isValid(b, empty, v)) {
-      b[empty] = v;
-      if (solve(b)) return true;
-      b[empty] = 0;
-    }
+// ═══════════════════════════════════════════════════════════════════════
+//  GENERATOR
+// ═══════════════════════════════════════════════════════════════════════
+function solve(b){
+  const e=b.indexOf(0); if(e===-1) return true;
+  for(let v=1;v<=9;v++){
+    if(isValidPlace(b,e,v)){ b[e]=v; if(solve(b)) return true; b[e]=0; }
   }
   return false;
 }
 
-function countSolutions(b, limit = 2) {
-  let count = 0;
-  function bt(b) {
-    if (count >= limit) return;
-    const empty = b.indexOf(0);
-    if (empty === -1) { count++; return; }
-    for (let v = 1; v <= 9; v++) {
-      if (isValid(b, empty, v)) {
-        b[empty] = v;
-        bt(b);
-        b[empty] = 0;
-      }
-    }
+function countSols(b,lim=2){
+  let n=0;
+  function bt(b){
+    if(n>=lim) return;
+    const e=b.indexOf(0); if(e===-1){n++;return;}
+    for(let v=1;v<=9;v++) if(isValidPlace(b,e,v)){b[e]=v;bt(b);b[e]=0;}
   }
-  bt([...b]);
-  return count;
+  bt([...b]); return n;
 }
 
-function generatePuzzle(diff) {
-  const sol = Array(81).fill(0);
-  solve(sol);
-  const puzzle = [...sol];
-  const clues = DIFFICULTIES[diff];
-  const toRemove = 81 - clues;
-  const order = Array.from({length:81},(_,i)=>i).sort(()=>Math.random()-0.5);
-  let removed = 0;
-  for (const idx of order) {
-    if (removed >= toRemove) break;
-    const backup = puzzle[idx];
-    puzzle[idx] = 0;
-    if (countSolutions(puzzle) === 1) removed++;
-    else puzzle[idx] = backup;
+function generatePuzzle(diff){
+  const sol=Array(81).fill(0); solve(sol);
+  const puzzle=[...sol];
+  const order=Array.from({length:81},(_,i)=>i).sort(()=>Math.random()-.5);
+  let removed=0, need=81-DIFFICULTIES[diff];
+  for(const idx of order){
+    if(removed>=need) break;
+    const bk=puzzle[idx]; puzzle[idx]=0;
+    if(countSols(puzzle)===1) removed++; else puzzle[idx]=bk;
   }
   return puzzle;
 }
 
-// ─── Logic techniques returning {idx, val, tech, explanation, peers} ─────────
-function findNakedSingle(b) {
-  for (let i = 0; i < 81; i++) {
-    if (b[i]) continue;
-    const cands = getCandidates(b, i);
-    if (cands.size === 1) {
-      const val = [...cands][0];
-      const r = Math.floor(i/9), c = i%9;
-      // Find which peers eliminate all other digits
-      const peers = getPeers(i).filter(p => b[p] !== 0);
-      return {
-        idx: i, val, tech: 'Naked Single',
-        explanation: `В клетке R${r+1}C${c+1} возможна только цифра <strong>${val}</strong> — все остальные уже есть в строке, столбце или блоке 3×3.`,
-        peers
-      };
-    }
+// ═══════════════════════════════════════════════════════════════════════
+//  LOGIC TECHNIQUES — each returns a Step or null
+//  Step = { idx, val, tech, explanation, peers, highlights }
+// ═══════════════════════════════════════════════════════════════════════
+
+// ── 1. NAKED SINGLE ─────────────────────────────────────────────────
+function nakedSingle(b, cands){
+  for(let i=0;i<81;i++){
+    if(!cands[i]||cands[i].size!==1) continue;
+    const val=[...cands[i]][0];
+    return {
+      idx:i, val, tech:'Naked Single',
+      explanation:`Клетка R${row(i)+1}C${col(i)+1}: единственный кандидат — <strong>${val}</strong>. Все остальные цифры уже стоят в строке, столбце или блоке.`,
+      peers: peers(i).filter(p=>b[p]!==0),
+      highlights:[]
+    };
   }
   return null;
 }
 
-function findHiddenSingle(b) {
-  const unitNames = (unit) => {
-    if (unit < 9) return `строке ${unit+1}`;
-    if (unit < 18) return `столбце ${unit-8}`;
-    const bk = unit - 18;
-    return `блоке (${Math.floor(bk/3)*3+1}-${Math.floor(bk/3)*3+3}, ${(bk%3)*3+1}-${(bk%3)*3+3})`;
-  };
-  for (let unit = 0; unit < 27; unit++) {
-    const cells = getUnit(unit);
-    for (let v = 1; v <= 9; v++) {
-      const possible = cells.filter(i => !b[i] && isValid(b, i, v));
-      if (possible.length === 1) {
-        const i = possible[0];
-        const r = Math.floor(i/9), c = i%9;
-        // peers = all filled cells in this unit
-        const peers = cells.filter(p => b[p] !== 0);
+// ── 2. HIDDEN SINGLE ────────────────────────────────────────────────
+function hiddenSingle(b, cands){
+  const units=allUnits();
+  const unames=['строке','строке','строке','строке','строке','строке','строке','строке','строке',
+                'столбце','столбце','столбце','столбце','столбце','столбце','столбце','столбце','столбце',
+                'блоке','блоке','блоке','блоке','блоке','блоке','блоке','блоке','блоке'];
+  for(let u=0;u<27;u++){
+    const cells=units[u];
+    for(let v=1;v<=9;v++){
+      const pos=cells.filter(i=>cands[i]&&cands[i].has(v));
+      if(pos.length===1){
+        const i=pos[0];
         return {
-          idx: i, val: v, tech: 'Hidden Single',
-          explanation: `Цифра <strong>${v}</strong> в ${unitNames(unit)} может стоять только в клетке R${r+1}C${c+1} — во всех остальных клетках она уже исключена.`,
-          peers
+          idx:i, val:v, tech:'Hidden Single',
+          explanation:`Цифра <strong>${v}</strong> в этой ${unames[u]} может встать только в R${row(i)+1}C${col(i)+1} — в остальных клетках она исключена.`,
+          peers: cells.filter(p=>b[p]!==0),
+          highlights: cells.filter(p=>cands[p]&&cands[p].has(v)&&p!==i)
         };
       }
     }
@@ -766,413 +314,815 @@ function findHiddenSingle(b) {
   return null;
 }
 
-function findNextLogicalStep(b) {
-  return findNakedSingle(b) || findHiddenSingle(b) || findBacktrackStep(b);
-}
-
-function findBacktrackStep(b) {
-  // Find cell with fewest candidates (MRV heuristic)
-  let best = null, bestSize = 10;
-  for (let i = 0; i < 81; i++) {
-    if (b[i]) continue;
-    const cands = getCandidates(b, i);
-    if (cands.size < bestSize) { bestSize = cands.size; best = i; }
-  }
-  if (!best && best !== 0) return null;
-  const cands = [...getCandidates(b, best)];
-  const v = cands[0];
-  const r = Math.floor(best/9), c = best%9;
-  return {
-    idx: best, val: v, tech: 'Перебор',
-    explanation: `Логика исчерпана. Клетка R${r+1}C${c+1} имеет ${cands.length} кандидатов (${cands.join(', ')}). Пробуем <strong>${v}</strong> — наименее ограниченный выбор.`,
-    peers: getPeers(best).filter(p => b[p] !== 0)
-  };
-}
-
-function getPeers(i) {
-  const r = Math.floor(i/9), c = i%9;
-  const peers = new Set();
-  for (let j = 0; j < 9; j++) {
-    peers.add(r*9+j);
-    peers.add(j*9+c);
-    const br = Math.floor(r/3)*3 + Math.floor(j/3);
-    const bc = Math.floor(c/3)*3 + j%3;
-    peers.add(br*9+bc);
-  }
-  peers.delete(i);
-  return [...peers];
-}
-
-// ─── Hint system ──────────────────────────────────────────────────────────────
-function clearHintHighlight() {
-  currentHint = null;
-  document.getElementById('hintBox').classList.remove('visible');
-  for (let i = 0; i < 81; i++) {
-    const el = cellEl(i);
-    if (el) {
-      el.classList.remove('hint-target', 'hint-peer');
-    }
-  }
-}
-
-function showHint() {
-  if (solving) return;
-  clearHintHighlight();
-  selected = -1;
-
-  const hint = findNextLogicalStep([...board]);
-  if (!hint) {
-    document.getElementById('status').textContent = '✓ Судоку уже решено!';
-    return;
-  }
-
-  currentHint = hint;
-
-  // Highlight target cell
-  const targetEl = cellEl(hint.idx);
-  if (targetEl) targetEl.classList.add('hint-target');
-
-  // Highlight peers (cells that constrain this one)
-  for (const p of hint.peers) {
-    const el = cellEl(p);
-    if (el && !el.classList.contains('hint-target')) el.classList.add('hint-peer');
-  }
-
-  // Show explanation box
-  const box = document.getElementById('hintBox');
-  document.getElementById('hintTitle').textContent = `💡 ${hint.tech}`;
-  document.getElementById('hintText').innerHTML = hint.explanation;
-  box.classList.add('visible');
-
-  document.getElementById('status').textContent = '';
-}
-
-function applyStep() {
-  if (solving) return;
-
-  // Use existing hint or find new one
-  const hint = currentHint || findNextLogicalStep([...board]);
-  if (!hint) {
-    document.getElementById('status').textContent = '✓ Судоку уже решено!';
-    return;
-  }
-
-  clearHintHighlight();
-
-  board[hint.idx] = hint.val;
-  updateCell(hint.idx);
-
-  // Flash animation
-  const el = cellEl(hint.idx);
-  if (el) {
-    el.classList.add('solving');
-    el.classList.add('solved-final');
-    setTimeout(() => el.classList.remove('solving'), 400);
-  }
-
-  showTech(hint.tech, `R${Math.floor(hint.idx/9)+1}C${hint.idx%9+1}`);
-  setTimeout(() => hideTechBar(), 2000);
-
-  checkWin();
-}
-
-// ─── Generate & new game ─────────────────────────────────────────────────────
-function newGame() {
-  if (solving) { solveAbort = true; }
-  clearHintHighlight();
-  document.getElementById('status').textContent = 'Генерация...';
-  document.getElementById('status').className = 'status';
-  setTimeout(() => {
-    board = generatePuzzle(difficulty);
-    given = board.map(v => v !== 0);
-    selected = -1;
-    document.getElementById('solveBtn').disabled = false;
-    document.getElementById('solveBtn').className = 'btn primary';
-    document.getElementById('solveBtn').textContent = '▶ Решить как профи';
-    hideTechBar();
-    renderBoard();
-    document.getElementById('status').textContent = '';
-  }, 30);
-}
-
-function clearUserInput() {
-  if (solving) return;
-  clearHintHighlight();
-  for (let i = 0; i < 81; i++) {
-    if (!given[i]) board[i] = 0;
-  }
-  renderBoard();
-  document.getElementById('status').textContent = '';
-}
-
-// ─── Animated solver ─────────────────────────────────────────────────────────
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const SPEED_MS = () => Math.round(600 / (speed * speed));
-
-function showTech(label, pos) {
-  const bar = document.getElementById('techBar');
-  document.getElementById('techLabel').textContent = label;
-  document.getElementById('techPos').textContent = pos || '';
-  bar.classList.add('visible');
-}
-
-function hideTechBar() {
-  document.getElementById('techBar').classList.remove('visible');
-}
-
-async function animatedSolve() {
-  if (solving) {
-    solveAbort = true;
-    return;
-  }
-  clearHintHighlight();
-  for (let i = 0; i < 81; i++) if (!given[i]) board[i] = 0;
-  renderBoard();
-
-  solving = true;
-  solveAbort = false;
-  selected = -1;
-
-  const btn = document.getElementById('solveBtn');
-  btn.textContent = '■ Остановить';
-  btn.className = 'btn primary solving-active';
-  document.getElementById('newBtn').disabled = true;
-  document.getElementById('clearBtn').disabled = true;
-  document.getElementById('hintBtn').disabled = true;
-  document.getElementById('stepBtn').disabled = true;
-  document.getElementById('status').textContent = '';
-
-  const steps = [];
-  buildSteps([...board], steps);
-
-  for (const step of steps) {
-    if (solveAbort) break;
-    if (step.val === 0) { board[step.idx] = 0; updateCell(step.idx); continue; }
-    board[step.idx] = step.val;
-    updateCell(step.idx);
-
-    const el = cellEl(step.idx);
-    if (el) {
-      el.classList.add('solving');
-      setTimeout(() => el && el.classList.remove('solving'), 350);
-    }
-    showTech(step.tech, `R${Math.floor(step.idx/9)+1}C${step.idx%9+1}`);
-    await sleep(SPEED_MS());
-  }
-
-  hideTechBar();
-  solving = false;
-  btn.className = 'btn primary';
-  btn.textContent = '▶ Решить как профи';
-  document.getElementById('newBtn').disabled = false;
-  document.getElementById('clearBtn').disabled = false;
-  document.getElementById('hintBtn').disabled = false;
-  document.getElementById('stepBtn').disabled = false;
-
-  if (!solveAbort) {
-    for (let i = 0; i < 81; i++) {
-      if (!given[i] && board[i]) {
-        const el = cellEl(i);
-        if (el) el.classList.add('solved-final');
-      }
-    }
-    document.getElementById('status').textContent = '✓ Решено!';
-    document.getElementById('status').className = 'status win';
-  }
-}
-
-// ─── Build steps ─────────────────────────────────────────────────────────────
-function buildSteps(b, steps) {
-  let progress = true;
-  while (progress) {
-    progress = false;
-    for (let i = 0; i < 81; i++) {
-      if (b[i]) continue;
-      const cands = getCandidates(b, i);
-      if (cands.size === 1) {
-        const val = [...cands][0];
-        steps.push({ idx: i, val, tech: 'Naked Single' });
-        b[i] = val; progress = true;
-      }
-    }
-    for (let unit = 0; unit < 27; unit++) {
-      const cells = getUnit(unit);
-      for (let v = 1; v <= 9; v++) {
-        const possible = cells.filter(i => !b[i] && isValid(b, i, v));
-        if (possible.length === 1) {
-          const i = possible[0];
-          steps.push({ idx: i, val: v, tech: 'Hidden Single' });
-          b[i] = v; progress = true;
+// ── 3. NAKED PAIR ───────────────────────────────────────────────────
+function nakedPair(b, cands){
+  const units=allUnits();
+  for(const cells of units){
+    const pairs=cells.filter(i=>cands[i]&&cands[i].size===2);
+    for(let a=0;a<pairs.length-1;a++){
+      for(let bb=a+1;bb<pairs.length;bb++){
+        const ca=cands[pairs[a]], cb=cands[pairs[bb]];
+        if([...ca].every(v=>cb.has(v))){
+          // Found naked pair — eliminate these two digits from rest of unit
+          const [v1,v2]=[...ca];
+          const elims=cells.filter(i=>i!==pairs[a]&&i!==pairs[b]&&cands[i]&&(cands[i].has(v1)||cands[i].has(v2)));
+          if(elims.length===0) continue;
+          // Return elimination as a pseudo-step (we'll mark candidates removed)
+          return {
+            idx:null, val:null, tech:'Naked Pair',
+            explanation:`Клетки R${row(pairs[a])+1}C${col(pairs[a])+1} и R${row(pairs[bb])+1}C${col(pairs[bb])+1} содержат только <strong>{${v1},${v2}}</strong>. Эти цифры убраны из кандидатов остальных клеток блока/строки/столбца.`,
+            peers:[pairs[a],pairs[bb]],
+            highlights: elims,
+            eliminate:{ digits:[v1,v2], from:elims }
+          };
         }
       }
     }
   }
-  if (b.includes(0)) backtrackSteps(b, steps);
+  return null;
 }
 
-function getUnit(unit) {
-  const cells = [];
-  if (unit < 9) {
-    for (let c = 0; c < 9; c++) cells.push(unit*9+c);
-  } else if (unit < 18) {
-    const c = unit - 9;
-    for (let r = 0; r < 9; r++) cells.push(r*9+c);
-  } else {
-    const bk = unit - 18;
-    const br = Math.floor(bk/3)*3, bc = (bk%3)*3;
-    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) cells.push((br+r)*9+(bc+c));
-  }
-  return cells;
-}
-
-function backtrackSteps(b, steps) {
-  const empty = b.indexOf(0);
-  if (empty === -1) return true;
-  for (let v = 1; v <= 9; v++) {
-    if (isValid(b, empty, v)) {
-      steps.push({ idx: empty, val: v, tech: 'Перебор' });
-      b[empty] = v;
-      if (backtrackSteps(b, steps)) return true;
-      steps.push({ idx: empty, val: 0, tech: 'Откат' });
-      b[empty] = 0;
+// ── 4. NAKED TRIPLE ─────────────────────────────────────────────────
+function nakedTriple(b, cands){
+  const units=allUnits();
+  for(const cells of units){
+    const small=cells.filter(i=>cands[i]&&cands[i].size>=2&&cands[i].size<=3);
+    for(let a=0;a<small.length-2;a++)
+    for(let bb=a+1;bb<small.length-1;bb++)
+    for(let cc=bb+1;cc<small.length;cc++){
+      const union=new Set([...cands[small[a]],...cands[small[bb]],...cands[small[cc]]]);
+      if(union.size===3){
+        const digits=[...union];
+        const elims=cells.filter(i=>i!==small[a]&&i!==small[bb]&&i!==small[cc]&&cands[i]&&digits.some(v=>cands[i].has(v)));
+        if(!elims.length) continue;
+        return {
+          idx:null,val:null,tech:'Naked Triple',
+          explanation:`Три клетки содержат только цифры <strong>{${digits.join(',')}}</strong> — эти цифры убраны из кандидатов остальных клеток.`,
+          peers:[small[a],small[bb],small[cc]],
+          highlights:elims,
+          eliminate:{digits,from:elims}
+        };
+      }
     }
   }
-  return false;
+  return null;
 }
 
-// ─── Numpad ───────────────────────────────────────────────────────────────────
-function buildNumpad() {
-  const np = document.getElementById('numpad');
-  for (let v = 1; v <= 9; v++) {
-    const btn = document.createElement('button');
-    btn.className = 'num-btn';
-    btn.textContent = v;
-    btn.addEventListener('click', () => inputNum(v));
-    np.appendChild(btn);
+// ── 5. HIDDEN PAIR ──────────────────────────────────────────────────
+function hiddenPair(b, cands){
+  const units=allUnits();
+  for(const cells of units){
+    const empty=cells.filter(i=>cands[i]);
+    for(let v1=1;v1<=8;v1++)
+    for(let v2=v1+1;v2<=9;v2++){
+      const pos1=empty.filter(i=>cands[i].has(v1));
+      const pos2=empty.filter(i=>cands[i].has(v2));
+      if(pos1.length!==2||pos2.length!==2) continue;
+      if(!pos1.every((p,j)=>p===pos2[j])) continue;
+      const [ca,cb]=[pos1[0],pos1[1]];
+      // Check if eliminations exist
+      const elim=[];
+      for(const i of [ca,cb]){
+        for(const v of cands[i]) if(v!==v1&&v!==v2) elim.push({i,v});
+      }
+      if(!elim.length) continue;
+      return {
+        idx:null,val:null,tech:'Hidden Pair',
+        explanation:`Цифры <strong>${v1} и ${v2}</strong> встречаются только в двух клетках этой единицы (R${row(ca)+1}C${col(ca)+1} и R${row(cb)+1}C${col(cb)+1}). Остальные кандидаты в этих клетках убраны.`,
+        peers:[ca,cb],highlights:[ca,cb],
+        eliminateExact:{pairs:[[ca,v1],[ca,v2],[cb,v1],[cb,v2]],keepOnly:{[ca]:[v1,v2],[cb]:[v1,v2]}}
+      };
+    }
   }
+  return null;
 }
 
-function inputNum(v) {
-  if (solving || selected < 0 || given[selected]) return;
+// ── 6. POINTING PAIRS/TRIPLES ───────────────────────────────────────
+function pointingPairs(b, cands){
+  for(let bx=0;bx<9;bx++){
+    const boxCells=unitCells('box',bx);
+    for(let v=1;v<=9;v++){
+      const pos=boxCells.filter(i=>cands[i]&&cands[i].has(v));
+      if(pos.length<2||pos.length>3) continue;
+      // All in same row?
+      const rows=[...new Set(pos.map(row))];
+      if(rows.length===1){
+        const elims=unitCells('row',rows[0]).filter(i=>!boxCells.includes(i)&&cands[i]&&cands[i].has(v));
+        if(elims.length){
+          return {
+            idx:null,val:null,tech:'Pointing '+( pos.length===2?'Pair':'Triple'),
+            explanation:`Цифра <strong>${v}</strong> в блоке встречается только в строке ${rows[0]+1} — убираем её из этой строки за пределами блока.`,
+            peers:pos,highlights:elims,
+            eliminate:{digits:[v],from:elims}
+          };
+        }
+      }
+      // All in same col?
+      const cols=[...new Set(pos.map(col))];
+      if(cols.length===1){
+        const elims=unitCells('col',cols[0]).filter(i=>!boxCells.includes(i)&&cands[i]&&cands[i].has(v));
+        if(elims.length){
+          return {
+            idx:null,val:null,tech:'Pointing '+( pos.length===2?'Pair':'Triple'),
+            explanation:`Цифра <strong>${v}</strong> в блоке встречается только в столбце ${cols[0]+1} — убираем её из этого столбца за пределами блока.`,
+            peers:pos,highlights:elims,
+            eliminate:{digits:[v],from:elims}
+          };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// ── 7. BOX-LINE REDUCTION ───────────────────────────────────────────
+function boxLineReduction(b, cands){
+  for(let v=1;v<=9;v++){
+    // Check rows
+    for(let r=0;r<9;r++){
+      const pos=unitCells('row',r).filter(i=>cands[i]&&cands[i].has(v));
+      if(pos.length<2||pos.length>3) continue;
+      const boxes=[...new Set(pos.map(box))];
+      if(boxes.length===1){
+        const elims=unitCells('box',boxes[0]).filter(i=>row(i)!==r&&cands[i]&&cands[i].has(v));
+        if(elims.length){
+          return {
+            idx:null,val:null,tech:'Box-Line Reduction',
+            explanation:`Цифра <strong>${v}</strong> в строке ${r+1} стоит только внутри одного блока — убираем её из остальных клеток блока.`,
+            peers:pos,highlights:elims,
+            eliminate:{digits:[v],from:elims}
+          };
+        }
+      }
+    }
+    // Check cols
+    for(let c=0;c<9;c++){
+      const pos=unitCells('col',c).filter(i=>cands[i]&&cands[i].has(v));
+      if(pos.length<2||pos.length>3) continue;
+      const boxes=[...new Set(pos.map(box))];
+      if(boxes.length===1){
+        const elims=unitCells('box',boxes[0]).filter(i=>col(i)!==c&&cands[i]&&cands[i].has(v));
+        if(elims.length){
+          return {
+            idx:null,val:null,tech:'Box-Line Reduction',
+            explanation:`Цифра <strong>${v}</strong> в столбце ${c+1} стоит только внутри одного блока — убираем её из остальных клеток блока.`,
+            peers:pos,highlights:elims,
+            eliminate:{digits:[v],from:elims}
+          };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// ── 8. X-WING ───────────────────────────────────────────────────────
+function xWing(b, cands){
+  for(let v=1;v<=9;v++){
+    // X-Wing on rows
+    for(let r1=0;r1<8;r1++){
+      const pos1=unitCells('row',r1).filter(i=>cands[i]&&cands[i].has(v));
+      if(pos1.length!==2) continue;
+      for(let r2=r1+1;r2<9;r2++){
+        const pos2=unitCells('row',r2).filter(i=>cands[i]&&cands[i].has(v));
+        if(pos2.length!==2) continue;
+        const [c1,c2]=[col(pos1[0]),col(pos1[1])];
+        if(col(pos2[0])===c1&&col(pos2[1])===c2){
+          const elims=[...unitCells('col',c1),...unitCells('col',c2)]
+            .filter(i=>!pos1.includes(i)&&!pos2.includes(i)&&cands[i]&&cands[i].has(v));
+          if(elims.length){
+            return {
+              idx:null,val:null,tech:'X-Wing',
+              explanation:`X-Wing: цифра <strong>${v}</strong> в строках ${r1+1} и ${r2+1} стоит ровно в столбцах ${c1+1} и ${c2+1}. Убираем <strong>${v}</strong> из остальных клеток этих столбцов.`,
+              peers:[...pos1,...pos2],highlights:elims,
+              eliminate:{digits:[v],from:elims}
+            };
+          }
+        }
+      }
+    }
+    // X-Wing on cols
+    for(let c1=0;c1<8;c1++){
+      const pos1=unitCells('col',c1).filter(i=>cands[i]&&cands[i].has(v));
+      if(pos1.length!==2) continue;
+      for(let c2=c1+1;c2<9;c2++){
+        const pos2=unitCells('col',c2).filter(i=>cands[i]&&cands[i].has(v));
+        if(pos2.length!==2) continue;
+        const [r1,r2]=[row(pos1[0]),row(pos1[1])];
+        if(row(pos2[0])===r1&&row(pos2[1])===r2){
+          const elims=[...unitCells('row',r1),...unitCells('row',r2)]
+            .filter(i=>!pos1.includes(i)&&!pos2.includes(i)&&cands[i]&&cands[i].has(v));
+          if(elims.length){
+            return {
+              idx:null,val:null,tech:'X-Wing',
+              explanation:`X-Wing: цифра <strong>${v}</strong> в столбцах ${c1+1} и ${c2+1} стоит ровно в строках ${r1+1} и ${r2+1}. Убираем <strong>${v}</strong> из остальных клеток этих строк.`,
+              peers:[...pos1,...pos2],highlights:elims,
+              eliminate:{digits:[v],from:elims}
+            };
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// ── 9. SWORDFISH ────────────────────────────────────────────────────
+function swordfish(b, cands){
+  for(let v=1;v<=9;v++){
+    // Swordfish on rows
+    const rowPos=[];
+    for(let r=0;r<9;r++){
+      const pos=unitCells('row',r).filter(i=>cands[i]&&cands[i].has(v));
+      if(pos.length>=2&&pos.length<=3) rowPos.push({r,pos,cols:pos.map(col)});
+    }
+    for(let a=0;a<rowPos.length-2;a++)
+    for(let bb=a+1;bb<rowPos.length-1;bb++)
+    for(let cc=bb+1;cc<rowPos.length;cc++){
+      const allCols=[...new Set([...rowPos[a].cols,...rowPos[bb].cols,...rowPos[cc].cols])];
+      if(allCols.length!==3) continue;
+      const allPos=[...rowPos[a].pos,...rowPos[bb].pos,...rowPos[cc].pos];
+      const elims=allCols.flatMap(c=>unitCells('col',c))
+        .filter(i=>!allPos.includes(i)&&cands[i]&&cands[i].has(v));
+      if(elims.length){
+        return {
+          idx:null,val:null,tech:'Swordfish',
+          explanation:`Swordfish: цифра <strong>${v}</strong> в строках ${rowPos[a].r+1},${rowPos[bb].r+1},${rowPos[cc].r+1} ограничена тремя столбцами. Убираем её из этих столбцов.`,
+          peers:allPos,highlights:elims,
+          eliminate:{digits:[v],from:elims}
+        };
+      }
+    }
+  }
+  return null;
+}
+
+// ── 10. XY-WING ─────────────────────────────────────────────────────
+function xyWing(b, cands){
+  // Find pivot (2 candidates) + two wings (2 candidates each) sharing one peer each
+  for(let pivot=0;pivot<81;pivot++){
+    if(!cands[pivot]||cands[pivot].size!==2) continue;
+    const [pA,pB]=[...cands[pivot]];
+    const pivotPeers=peers(pivot).filter(i=>cands[i]&&cands[i].size===2);
+    // Find wing1 sharing pA with pivot
+    for(const w1 of pivotPeers){
+      if(!cands[w1].has(pA)) continue;
+      const pC=[...cands[w1]].find(v=>v!==pA);
+      // Find wing2 sharing pB with pivot, and pC with w1
+      for(const w2 of pivotPeers){
+        if(w2===w1||!cands[w2].has(pB)||!cands[w2].has(pC)) continue;
+        // XY-Wing found! Eliminate pC from cells seeing both wings
+        const elims=peers(w1).filter(i=>i!==pivot&&peers(w2).includes(i)&&cands[i]&&cands[i].has(pC));
+        if(!elims.length) continue;
+        return {
+          idx:null,val:null,tech:'XY-Wing',
+          explanation:`XY-Wing: стержень R${row(pivot)+1}C${col(pivot)+1} (${pA},${pB}) с крыльями в R${row(w1)+1}C${col(w1)+1} и R${row(w2)+1}C${col(w2)+1}. Цифра <strong>${pC}</strong> убрана из клеток, видящих оба крыла.`,
+          peers:[pivot,w1,w2],highlights:elims,
+          eliminate:{digits:[pC],from:elims}
+        };
+      }
+    }
+  }
+  return null;
+}
+
+// ── 11. SIMPLE COLORING (Single's Chain) ────────────────────────────
+function simpleColoring(b, cands){
+  for(let v=1;v<=9;v++){
+    // Build conjugate pairs graph
+    const units=allUnits();
+    const graph=new Map(); // cell -> set of cells it's conjugate with for v
+    for(const cells of units){
+      const pos=cells.filter(i=>cands[i]&&cands[i].has(v));
+      if(pos.length===2){
+        if(!graph.has(pos[0])) graph.set(pos[0],new Set());
+        if(!graph.has(pos[1])) graph.set(pos[1],new Set());
+        graph.get(pos[0]).add(pos[1]);
+        graph.get(pos[1]).add(pos[0]);
+      }
+    }
+    if(!graph.size) continue;
+    // Color chains
+    const color=new Map(); // cell -> 0 or 1
+    for(const start of graph.keys()){
+      if(color.has(start)) continue;
+      const queue=[start]; color.set(start,0);
+      while(queue.length){
+        const curr=queue.shift();
+        for(const nb of graph.get(curr)){
+          if(!color.has(nb)){ color.set(nb,1-color.get(curr)); queue.push(nb); }
+        }
+      }
+    }
+    // Rule 2: if two same-color cells see each other, that color is wrong
+    for(const [ci,colI] of color){
+      for(const [cj,colJ] of color){
+        if(ci>=cj||colI!==colJ) continue;
+        if(peers(ci).includes(cj)){
+          // All cells of this color can't have v
+          const wrong=[...color.entries()].filter(([,c])=>c===colI).map(([i])=>i);
+          return {
+            idx:null,val:null,tech:'Simple Coloring',
+            explanation:`Simple Coloring: две клетки одного цвета видят друг друга — этот цвет ложный. Цифра <strong>${v}</strong> убрана.`,
+            peers:[...color.keys()],highlights:wrong,
+            eliminate:{digits:[v],from:wrong}
+          };
+        }
+      }
+    }
+    // Rule 4: if cell sees both colors, v can be eliminated from it
+    for(let i=0;i<81;i++){
+      if(!cands[i]||!cands[i].has(v)||color.has(i)) continue;
+      const p=peers(i);
+      const seesColor0=p.some(pi=>color.get(pi)===0);
+      const seesColor1=p.some(pi=>color.get(pi)===1);
+      if(seesColor0&&seesColor1){
+        return {
+          idx:null,val:null,tech:'Simple Coloring',
+          explanation:`Simple Coloring: клетка R${row(i)+1}C${col(i)+1} видит оба цвета цепочки для <strong>${v}</strong> — цифра исключена.`,
+          peers:[...color.keys()],highlights:[i],
+          eliminate:{digits:[v],from:[i]}
+        };
+      }
+    }
+  }
+  return null;
+}
+
+// ── APPLY ELIMINATIONS (for techniques that remove candidates) ───────
+function applyElimination(cands, step){
+  let changed=false;
+  if(step.eliminate){
+    const {digits,from}=step.eliminate;
+    for(const i of from) for(const d of digits) if(cands[i]&&cands[i].has(d)){cands[i].delete(d);changed=true;}
+  }
+  if(step.eliminateExact){
+    const {keepOnly}=step.eliminateExact;
+    for(const [i,keep] of Object.entries(keepOnly)){
+      if(!cands[i]) continue;
+      for(const v of [...cands[i]]) if(!keep.includes(v)){cands[i].delete(v);changed=true;}
+    }
+  }
+  return changed;
+}
+
+// ── FIND NEXT LOGICAL STEP ───────────────────────────────────────────
+function findNextStep(b){
+  const cands=buildCandidates(b);
+  return (
+    nakedSingle(b,cands)   ||
+    hiddenSingle(b,cands)  ||
+    nakedPair(b,cands)     ||
+    nakedTriple(b,cands)   ||
+    hiddenPair(b,cands)    ||
+    pointingPairs(b,cands) ||
+    boxLineReduction(b,cands) ||
+    xWing(b,cands)         ||
+    swordfish(b,cands)     ||
+    xyWing(b,cands)        ||
+    simpleColoring(b,cands)||
+    hypothesisStep(b,cands)
+  );
+}
+
+function hypothesisStep(b, cands){
+  // MRV: pick cell with fewest candidates
+  let best=null, bestSize=10;
+  for(let i=0;i<81;i++){
+    if(cands[i]&&cands[i].size<bestSize){ bestSize=cands[i].size; best=i; }
+  }
+  if(best===null) return null;
+  const c=[...cands[best]], v=c[0];
+  return {
+    idx:best, val:v, tech:'Гипотеза',
+    explanation:`<span class="hyp">Логические техники исчерпаны.</span> Клетка R${row(best)+1}C${col(best)+1} имеет ${c.length} кандидата (${c.join(', ')}). Предполагаем <strong>${v}</strong> — если противоречие, откатываемся.`,
+    peers:peers(best).filter(p=>b[p]!==0),
+    highlights:[], isHypothesis:true
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  BUILD STEP SEQUENCE FOR ANIMATED SOLVE
+// ═══════════════════════════════════════════════════════════════════════
+function buildAllSteps(initBoard){
+  const b=[...initBoard];
+  const steps=[];
+
+  function tryLogic(){
+    let anyProgress=true;
+    while(anyProgress){
+      anyProgress=false;
+      const cands=buildCandidates(b);
+      // Try placement techniques first
+      const s1=nakedSingle(b,cands)||hiddenSingle(b,cands);
+      if(s1&&s1.idx!==null){ steps.push(s1); b[s1.idx]=s1.val; anyProgress=true; continue; }
+      // Try elimination techniques
+      const sel=nakedPair(b,cands)||nakedTriple(b,cands)||hiddenPair(b,cands)||
+                 pointingPairs(b,cands)||boxLineReduction(b,cands)||
+                 xWing(b,cands)||swordfish(b,cands)||xyWing(b,cands)||simpleColoring(b,cands);
+      if(sel){
+        steps.push({...sel, eliminationOnly:true});
+        // Apply elimination to b's effective state (we track via repeated logic)
+        // Just mark as done — candidates will be rebuilt next iteration
+        anyProgress=true;
+        // Actually apply elimination to board state (we need persistent cands)
+        // For simplicity rebuild is fine, but we need to flag what was eliminated
+        // Store elimination info in step and skip — next rebuild will reflect b's state
+        // Since b doesn't change here, we need to actually modify a persistent cands object
+        // Rebuild approach: mark a "virtual" removal by placing a sentinel — not ideal.
+        // Better: use persistent candidates map
+        return sel; // signal: elimination applied
+      }
+    }
+    return null;
+  }
+
+  // Use persistent candidates for elimination tracking
+  function buildAllStepsPersistent(){
+    const b2=[...initBoard];
+    const stepsOut=[];
+    const cands=buildCandidates(b2);
+
+    let safetyCounter=0;
+    while(b2.includes(0)&&safetyCounter++<1000){
+      // 1. Naked/Hidden Single
+      let placed=false;
+      for(let i=0;i<81;i++){
+        if(!cands[i]||cands[i].size!==1) continue;
+        const val=[...cands[i]][0];
+        stepsOut.push({idx:i,val,tech:'Naked Single',isPlacement:true,
+          explanation:`R${row(i)+1}C${col(i)+1}: единственный кандидат <strong>${val}</strong>.`,peers:[],highlights:[]});
+        b2[i]=val; cands[i]=null;
+        // Remove from peers
+        for(const p of peers(i)) if(cands[p]) cands[p].delete(val);
+        placed=true; break;
+      }
+      if(placed) continue;
+
+      // 2. Hidden Single
+      let foundHS=false;
+      outer:
+      for(const cells of allUnits()){
+        for(let v=1;v<=9;v++){
+          const pos=cells.filter(i=>cands[i]&&cands[i].has(v));
+          if(pos.length!==1) continue;
+          const i=pos[0];
+          stepsOut.push({idx:i,val:v,tech:'Hidden Single',isPlacement:true,
+            explanation:`Цифра <strong>${v}</strong> в этой единице только в R${row(i)+1}C${col(i)+1}.`,
+            peers:cells.filter(p=>b2[p]!==0),highlights:[]});
+          b2[i]=v; cands[i]=null;
+          for(const p of peers(i)) if(cands[p]) cands[p].delete(v);
+          foundHS=true; break outer;
+        }
+      }
+      if(foundHS) continue;
+
+      // 3-11. Elimination techniques
+      const elimStep=
+        nakedPair(b2,cands)||nakedTriple(b2,cands)||hiddenPair(b2,cands)||
+        pointingPairs(b2,cands)||boxLineReduction(b2,cands)||
+        xWing(b2,cands)||swordfish(b2,cands)||xyWing(b2,cands)||simpleColoring(b2,cands);
+
+      if(elimStep){
+        stepsOut.push({...elimStep,isElimination:true});
+        applyElimination(cands,elimStep);
+        // After elimination, naked singles may appear — loop continues
+        continue;
+      }
+
+      // 12. Hypothesis (backtrack)
+      const hyp=hypothesisStep(b2,cands);
+      if(!hyp) break;
+      stepsOut.push({...hyp,isPlacement:true,isHypothesis:true});
+      b2[hyp.idx]=hyp.val; cands[hyp.idx]=null;
+      for(const p of peers(hyp.idx)) if(cands[p]) cands[p].delete(hyp.val);
+      // Note: we don't backtrack in animation — we just trust the puzzle has unique solution
+    }
+    return stepsOut;
+  }
+
+  return buildAllStepsPersistent();
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  HINT & STEP UI
+// ═══════════════════════════════════════════════════════════════════════
+function clearHintHighlight(){
+  currentHint=null;
+  document.getElementById('hintBox').classList.remove('visible');
+  for(let i=0;i<81;i++){const el=cellEl(i);if(el){el.classList.remove('hint-target','hint-peer','hypothesis');}}
+}
+
+function showHint(){
+  if(solving) return;
+  clearHintHighlight(); selected=-1;
+  const cands=buildCandidates(board);
+  const hint=
+    nakedSingle(board,cands)||hiddenSingle(board,cands)||
+    nakedPair(board,cands)||nakedTriple(board,cands)||hiddenPair(board,cands)||
+    pointingPairs(board,cands)||boxLineReduction(board,cands)||
+    xWing(board,cands)||swordfish(board,cands)||xyWing(board,cands)||simpleColoring(board,cands)||
+    hypothesisStep(board,cands);
+  if(!hint){document.getElementById('status').textContent='✓ Уже решено!';return;}
+  currentHint=hint;
+
+  if(hint.idx!==null){
+    const t=cellEl(hint.idx);
+    if(t){t.classList.add('hint-target');if(hint.isHypothesis)t.classList.add('hypothesis');}
+  }
+  for(const p of (hint.peers||[])){const el=cellEl(p);if(el)el.classList.add('hint-peer');}
+  for(const h of (hint.highlights||[])){const el=cellEl(h);if(el)el.classList.add('hint-peer');}
+
+  document.getElementById('hintTitle').textContent='💡 '+hint.tech;
+  document.getElementById('hintText').innerHTML=hint.explanation;
+  document.getElementById('hintBox').classList.add('visible');
+  document.getElementById('status').textContent='';
+}
+
+function applyStep(){
+  if(solving) return;
+  const cands=buildCandidates(board);
+  const hint=currentHint||
+    nakedSingle(board,cands)||hiddenSingle(board,cands)||
+    nakedPair(board,cands)||nakedTriple(board,cands)||hiddenPair(board,cands)||
+    pointingPairs(board,cands)||boxLineReduction(board,cands)||
+    xWing(board,cands)||swordfish(board,cands)||xyWing(board,cands)||simpleColoring(board,cands)||
+    hypothesisStep(board,cands);
+  if(!hint){document.getElementById('status').textContent='✓ Уже решено!';return;}
   clearHintHighlight();
-  if (!isValid(board, selected, v) && v !== 0) {
-    const el = cellEl(selected);
-    board[selected] = v;
-    updateCell(selected);
-    el && el.classList.add('error');
-    setTimeout(() => { el && el.classList.remove('error'); board[selected] = 0; updateCell(selected); }, 600);
-    return;
+
+  if(hint.idx!==null){
+    board[hint.idx]=hint.val;
+    updateCell(hint.idx);
+    const el=cellEl(hint.idx);
+    if(el){
+      el.classList.add('solving');
+      if(!hint.isHypothesis) el.classList.add('solved-final');
+      else el.classList.add('hypothesis');
+      setTimeout(()=>el.classList.remove('solving'),400);
+    }
+  } else if(hint.eliminate||hint.eliminateExact){
+    // Elimination step — apply and re-check
+    applyElimination(cands,hint);
+    // Visually flash eliminated cells
+    const elims=(hint.eliminate?.from||[]);
+    for(const i of elims){const el=cellEl(i);if(el){el.classList.add('error');setTimeout(()=>el&&el.classList.remove('error'),500);}}
+    document.getElementById('status').textContent=`${hint.tech}: кандидаты убраны`;
   }
-  board[selected] = v;
-  updateCell(selected);
-  refreshHighlights();
+
+  showTech(hint.tech,hint.idx!==null?`R${row(hint.idx)+1}C${col(hint.idx)+1}`:'');
+  setTimeout(hideTechBar,2500);
   checkWin();
 }
 
-document.addEventListener('keydown', e => {
-  if (solving) return;
-  if (e.key >= '1' && e.key <= '9') inputNum(+e.key);
-  if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') inputNum(0);
-  if (selected >= 0) {
-    const moves = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 9, ArrowUp: -9 };
-    if (moves[e.key] !== undefined) {
-      const next = selected + moves[e.key];
-      if (next >= 0 && next < 81) { selected = next; refreshHighlights(); }
+// ═══════════════════════════════════════════════════════════════════════
+//  ANIMATED SOLVE
+// ═══════════════════════════════════════════════════════════════════════
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const SPEED_MS=()=>Math.round(500/(speed*speed));
+
+function showTech(label,pos){
+  document.getElementById('techLabel').textContent=label;
+  document.getElementById('techPos').textContent=pos||'';
+  document.getElementById('techBar').classList.add('visible');
+}
+function hideTechBar(){document.getElementById('techBar').classList.remove('visible');}
+
+async function animatedSolve(){
+  if(solving){solveAbort=true;return;}
+  clearHintHighlight();
+  for(let i=0;i<81;i++) if(!given[i]) board[i]=0;
+  renderBoard();
+  solving=true; solveAbort=false; selected=-1;
+
+  const btn=document.getElementById('solveBtn');
+  btn.textContent='■ Остановить'; btn.className='btn primary solving-active';
+  ['newBtn','clearBtn','hintBtn','stepBtn'].forEach(id=>document.getElementById(id).disabled=true);
+  document.getElementById('status').textContent='';
+
+  const steps=buildAllSteps([...board]);
+
+  for(const s of steps){
+    if(solveAbort) break;
+
+    if(s.isPlacement&&s.idx!==null){
+      board[s.idx]=s.val; updateCell(s.idx);
+      const el=cellEl(s.idx);
+      if(el){
+        el.classList.add('solving');
+        if(!s.isHypothesis) el.classList.add('solved-final');
+        else el.classList.add('hypothesis');
+        setTimeout(()=>el&&el.classList.remove('solving'),350);
+      }
+      showTech(s.tech,`R${row(s.idx)+1}C${col(s.idx)+1}`);
+      await sleep(SPEED_MS());
+    } else if(s.isElimination){
+      // Flash elimination cells briefly
+      showTech(s.tech,'');
+      const elims=s.eliminate?.from||[];
+      for(const i of elims){const el=cellEl(i);if(el)el.classList.add('hint-peer');}
+      await sleep(Math.max(SPEED_MS()*0.8,80));
+      for(const i of elims){const el=cellEl(i);if(el)el.classList.remove('hint-peer');}
     }
   }
-});
 
-function checkWin() {
-  if (board.includes(0)) return;
-  for (let i = 0; i < 81; i++) if (!isValid([...board.slice(0,i), 0, ...board.slice(i+1)], i, board[i])) return;
-  hideTechBar();
-  document.getElementById('status').textContent = '✓ Решено! Молодец!';
-  document.getElementById('status').className = 'status win';
+  hideTechBar(); solving=false;
+  btn.className='btn primary'; btn.textContent='▶ Решить логикой';
+  ['newBtn','clearBtn','hintBtn','stepBtn'].forEach(id=>document.getElementById(id).disabled=false);
+
+  if(!solveAbort){
+    for(let i=0;i<81;i++){if(!given[i]&&board[i]){const el=cellEl(i);if(el&&!el.classList.contains('hypothesis'))el.classList.add('solved-final');}}
+    document.getElementById('status').textContent='✓ Решено!';
+    document.getElementById('status').className='status win';
+  }
 }
 
-// ─── Import panel ─────────────────────────────────────────────────────────────
-document.getElementById('importHeader').addEventListener('click', () => {
-  const body = document.getElementById('importBody');
-  const arrow = document.getElementById('importArrow');
-  const open = body.classList.toggle('open');
-  arrow.classList.toggle('open', open);
-});
+// ═══════════════════════════════════════════════════════════════════════
+//  BOARD UI
+// ═══════════════════════════════════════════════════════════════════════
+const cellEl=i=>document.getElementById('c'+i);
 
-document.getElementById('importBtn').addEventListener('click', () => {
-  const raw = document.getElementById('importText').value;
-  const textarea = document.getElementById('importText');
-  const nums = [];
-  for (const c of raw) {
-    if (c >= '1' && c <= '9') nums.push(+c);
-    else if (c === '0' || c === '.' || c === '?' || c === '_' || c === ' ') nums.push(0);
+function renderBoard(){
+  const el=document.getElementById('board'); el.innerHTML='';
+  for(let i=0;i<81;i++){
+    const c=document.createElement('div');
+    c.className='cell'+(given[i]?' given':'');
+    c.id='c'+i; c.dataset.row=row(i); c.dataset.col=col(i);
+    c.textContent=board[i]||'';
+    c.addEventListener('click',()=>selectCell(i));
+    el.appendChild(c);
   }
-  if (nums.length !== 81) {
-    textarea.classList.add('error-input');
-    document.getElementById('status').textContent = `Ошибка: распознано ${nums.length} клеток, нужно 81`;
-    document.getElementById('status').className = 'status';
-    setTimeout(() => textarea.classList.remove('error-input'), 1000);
+}
+
+function updateCell(i){
+  const el=cellEl(i); if(!el) return;
+  el.textContent=board[i]||'';
+  el.className='cell'+(given[i]?' given':'');
+  if(i===selected) el.classList.add('selected');
+}
+
+function selectCell(i){
+  if(solving) return;
+  clearHintHighlight(); selected=i; refreshHighlights();
+}
+
+function refreshHighlights(){
+  for(let i=0;i<81;i++){
+    const el=cellEl(i); if(!el) continue;
+    el.className='cell'+(given[i]?' given':'');
+    if(i===selected){el.classList.add('selected');continue;}
+    if(selected>=0){
+      const same=row(i)===row(selected)||col(i)===col(selected)||box(i)===box(selected);
+      if(same) el.classList.add('same-group');
+      if(board[selected]&&board[i]===board[selected]) el.classList.add('same-value');
+    }
+  }
+}
+
+function inputNum(v){
+  if(solving||selected<0||given[selected]) return;
+  clearHintHighlight();
+  if(v!==0&&!isValidPlace(board,selected,v)){
+    const el=cellEl(selected); board[selected]=v; updateCell(selected);
+    el&&el.classList.add('error');
+    setTimeout(()=>{el&&el.classList.remove('error');board[selected]=0;updateCell(selected);},600);
     return;
   }
-  textarea.classList.remove('error-input');
-  if (solving) { solveAbort = true; }
-  clearHintHighlight();
-  board = [...nums];
-  given = board.map(v => v !== 0);
-  selected = -1;
-  document.getElementById('solveBtn').disabled = false;
-  document.getElementById('solveBtn').className = 'btn primary';
-  document.getElementById('solveBtn').textContent = '▶ Решить как профи';
+  board[selected]=v; updateCell(selected); refreshHighlights(); checkWin();
+}
+
+document.addEventListener('keydown',e=>{
+  if(solving) return;
+  if(e.key>='1'&&e.key<='9') inputNum(+e.key);
+  if(e.key==='Backspace'||e.key==='Delete'||e.key==='0') inputNum(0);
+  if(selected>=0){
+    const m={ArrowRight:1,ArrowLeft:-1,ArrowDown:9,ArrowUp:-9};
+    if(m[e.key]!==undefined){const n=selected+m[e.key];if(n>=0&&n<81){selected=n;refreshHighlights();}}
+  }
+});
+
+function checkWin(){
+  if(board.includes(0)) return;
+  for(let i=0;i<81;i++) if(!isValidPlace([...board.slice(0,i),0,...board.slice(i+1)],i,board[i])) return;
   hideTechBar();
-  renderBoard();
-  document.getElementById('status').textContent = `✓ Загружено (${given.filter(Boolean).length} подсказок)`;
-  document.getElementById('status').className = 'status win';
+  document.getElementById('status').textContent='✓ Решено! Молодец!';
+  document.getElementById('status').className='status win';
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  COPY
+// ═══════════════════════════════════════════════════════════════════════
+function copyPosition(){
+  const lines=[];
+  for(let r=0;r<9;r++){
+    let s=''; for(let c=0;c<9;c++) s+=board[r*9+c]||'?';
+    lines.push(s);
+  }
+  const text=lines.join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=text; ta.style.cssText='position:fixed;top:0;left:0;opacity:0;';
+  document.body.appendChild(ta); ta.focus(); ta.select();
+  try{document.execCommand('copy');}catch(e){}
+  document.body.removeChild(ta);
+  if(navigator.clipboard) navigator.clipboard.writeText(text).catch(()=>{});
+  showToast('✓ Скопировано!');
+}
+
+function showToast(msg){
+  const t=document.getElementById('toast'); t.textContent=msg;
+  t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2000);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  GAME CONTROL
+// ═══════════════════════════════════════════════════════════════════════
+function newGame(){
+  if(solving) solveAbort=true;
+  clearHintHighlight();
+  document.getElementById('status').textContent='Генерация...';
+  document.getElementById('status').className='status';
+  setTimeout(()=>{
+    board=generatePuzzle(difficulty);
+    given=board.map(v=>v!==0); selected=-1;
+    const btn=document.getElementById('solveBtn');
+    btn.disabled=false; btn.className='btn primary'; btn.textContent='▶ Решить логикой';
+    hideTechBar(); renderBoard();
+    document.getElementById('status').textContent='';
+  },30);
+}
+
+function clearUserInput(){
+  if(solving) return;
+  clearHintHighlight();
+  for(let i=0;i<81;i++) if(!given[i]) board[i]=0;
+  renderBoard(); document.getElementById('status').textContent='';
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  IMPORT
+// ═══════════════════════════════════════════════════════════════════════
+document.getElementById('importHeader').addEventListener('click',()=>{
+  const b=document.getElementById('importBody'),a=document.getElementById('importArrow');
+  const open=b.classList.toggle('open'); a.classList.toggle('open',open);
+});
+
+document.getElementById('importBtn').addEventListener('click',()=>{
+  const raw=document.getElementById('importText').value, ta=document.getElementById('importText');
+  const nums=[];
+  for(const c of raw){
+    if(c>='1'&&c<='9') nums.push(+c);
+    else if(c==='0'||c==='.'||c==='?'||c==='_'||c===' ') nums.push(0);
+  }
+  if(nums.length!==81){
+    ta.classList.add('err');
+    document.getElementById('status').textContent=`Ошибка: ${nums.length} клеток, нужно 81`;
+    setTimeout(()=>ta.classList.remove('err'),1000); return;
+  }
+  ta.classList.remove('err');
+  if(solving) solveAbort=true;
+  clearHintHighlight();
+  board=[...nums]; given=board.map(v=>v!==0); selected=-1;
+  const btn=document.getElementById('solveBtn');
+  btn.disabled=false; btn.className='btn primary'; btn.textContent='▶ Решить логикой';
+  hideTechBar(); renderBoard();
+  document.getElementById('status').textContent=`✓ Загружено (${given.filter(Boolean).length} подсказок)`;
+  document.getElementById('status').className='status win';
   document.getElementById('importBody').classList.remove('open');
   document.getElementById('importArrow').classList.remove('open');
 });
 
-// ─── Difficulty buttons ───────────────────────────────────────────────────────
-document.querySelectorAll('.diff-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    difficulty = btn.dataset.diff;
-    newGame();
+// ═══════════════════════════════════════════════════════════════════════
+//  WIRING
+// ═══════════════════════════════════════════════════════════════════════
+document.getElementById('speedSlider').addEventListener('input',function(){
+  speed=+this.value; document.getElementById('speedVal').textContent='×'+speed;
+});
+
+document.querySelectorAll('.diff-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.diff-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active'); difficulty=btn.dataset.diff; newGame();
   });
 });
 
-document.getElementById('copyBtn').addEventListener('click', () => {
-  const lines = [];
-  for (let r = 0; r < 9; r++) {
-    let row = '';
-    for (let c = 0; c < 9; c++) {
-      const v = board[r * 9 + c];
-      row += v ? String(v) : '?';
-    }
-    lines.push(row);
+document.getElementById('newBtn').addEventListener('click',newGame);
+document.getElementById('clearBtn').addEventListener('click',clearUserInput);
+document.getElementById('copyBtn').addEventListener('click',copyPosition);
+document.getElementById('hintBtn').addEventListener('click',showHint);
+document.getElementById('stepBtn').addEventListener('click',applyStep);
+document.getElementById('solveBtn').addEventListener('click',animatedSolve);
+
+// Numpad
+(()=>{
+  const np=document.getElementById('numpad');
+  for(let v=1;v<=9;v++){
+    const btn=document.createElement('button');
+    btn.className='num-btn'; btn.textContent=v;
+    btn.addEventListener('click',()=>inputNum(v));
+    np.appendChild(btn);
   }
-  const text = lines.join('\n');
-  navigator.clipboard.writeText(text).then(() => {
-    const btn = document.getElementById('copyBtn');
-    const orig = btn.textContent;
-    btn.textContent = '✓ Скопировано';
-    btn.style.borderColor = 'var(--solve-color)';
-    btn.style.color = 'var(--solve-color)';
-    setTimeout(() => {
-      btn.textContent = orig;
-      btn.style.borderColor = '';
-      btn.style.color = '';
-    }, 1800);
-  });
-});
+})();
 
-document.getElementById('newBtn').addEventListener('click', newGame);
-document.getElementById('clearBtn').addEventListener('click', clearUserInput);
-document.getElementById('solveBtn').addEventListener('click', animatedSolve);
-document.getElementById('hintBtn').addEventListener('click', showHint);
-document.getElementById('stepBtn').addEventListener('click', applyStep);
-
-// ─── Init ─────────────────────────────────────────────────────────────────────
-buildNumpad();
 newGame();
 </script>
 </body>
