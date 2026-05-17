@@ -238,7 +238,7 @@
   /* Controls */
   .controls {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
     gap: 10px;
     margin-bottom: 16px;
   }
@@ -425,6 +425,52 @@
 
   .btn-import:hover { background: var(--accent); color: var(--bg); }
 
+  .cell.hint-target {
+    animation: hint-pulse 1.2s ease infinite;
+    border-color: #fff176 !important;
+    z-index: 3;
+  }
+
+  .cell.hint-peer {
+    background: rgba(255,241,118,0.06);
+  }
+
+  @keyframes hint-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255,241,118,0.5); background: rgba(255,241,118,0.12); }
+    50% { box-shadow: 0 0 0 6px rgba(255,241,118,0); background: rgba(255,241,118,0.22); }
+  }
+
+  /* Hint explanation box */
+  .hint-box {
+    background: var(--surface);
+    border: 1px solid #fff176;
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    display: none;
+    animation: fadeInUp 0.3s ease;
+  }
+
+  .hint-box.visible { display: block; }
+
+  .hint-box-title {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #fff176;
+    margin-bottom: 6px;
+  }
+
+  .hint-box-text {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.5;
+  }
+
+  .hint-box-text strong { color: #fff176; font-weight: 600; }
+
   /* Speed control */
   .speed-row {
     display: flex;
@@ -500,9 +546,17 @@
     <span class="tech-pos" id="techPos"></span>
   </div>
 
+  <!-- Hint explanation -->
+  <div class="hint-box" id="hintBox">
+    <div class="hint-box-title" id="hintTitle"></div>
+    <div class="hint-box-text" id="hintText"></div>
+  </div>
+
   <div class="controls">
     <button class="btn" id="newBtn">⟳ Новая</button>
     <button class="btn" id="clearBtn">✕ Очистить</button>
+    <button class="btn" id="hintBtn">💡 Подсказка</button>
+    <button class="btn" id="stepBtn">→ Шаг</button>
     <button class="btn primary" id="solveBtn">▶ Решить как профи</button>
   </div>
 
@@ -526,6 +580,7 @@ let solving = false;
 let solveAbort = false;
 let difficulty = 'easy';
 let speed = 3;
+let currentHint = null; // { idx, val, tech, explanation, peers }
 
 const DIFFICULTIES = { easy: 36, medium: 28, hard: 22 };
 
@@ -565,6 +620,7 @@ function updateCell(i) {
 
 function selectCell(i) {
   if (solving) return;
+  clearHintHighlight();
   selected = i;
   refreshHighlights();
 }
@@ -645,11 +701,8 @@ function countSolutions(b, limit = 2) {
 }
 
 function generatePuzzle(diff) {
-  // Fill full solution
   const sol = Array(81).fill(0);
-  const cells = Array.from({length:81},(_,i)=>i).sort(()=>Math.random()-0.5);
   solve(sol);
-  // Shuffle solution rows within bands etc for variety
   const puzzle = [...sol];
   const clues = DIFFICULTIES[diff];
   const toRemove = 81 - clues;
@@ -659,302 +712,75 @@ function generatePuzzle(diff) {
     if (removed >= toRemove) break;
     const backup = puzzle[idx];
     puzzle[idx] = 0;
-    if (countSolutions(puzzle) === 1) {
-      removed++;
-    } else {
-      puzzle[idx] = backup;
-    }
+    if (countSolutions(puzzle) === 1) removed++;
+    else puzzle[idx] = backup;
   }
   return puzzle;
 }
 
-// ─── Generate & new game ─────────────────────────────────────────────────────
-function newGame() {
-  if (solving) { solveAbort = true; }
-  document.getElementById('status').textContent = 'Генерация...';
-  document.getElementById('status').className = 'status';
-  setTimeout(() => {
-    board = generatePuzzle(difficulty);
-    given = board.map(v => v !== 0);
-    selected = -1;
-    document.getElementById('solveBtn').disabled = false;
-    document.getElementById('solveBtn').className = 'btn primary';
-    document.getElementById('solveBtn').textContent = '▶ Решить как профи';
-    hideTechBar();
-    renderBoard();
-    document.getElementById('status').textContent = '';
-  }, 30);
-}
-
-function clearUserInput() {
-  if (solving) return;
+// ─── Logic techniques returning {idx, val, tech, explanation, peers} ─────────
+function findNakedSingle(b) {
   for (let i = 0; i < 81; i++) {
-    if (!given[i]) board[i] = 0;
-  }
-  renderBoard();
-  document.getElementById('status').textContent = '';
-}
-
-// ─── Animated solver ─────────────────────────────────────────────────────────
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const SPEED_MS = () => Math.round(600 / (speed * speed));
-
-function showTech(label, pos) {
-  const bar = document.getElementById('techBar');
-  document.getElementById('techLabel').textContent = label;
-  document.getElementById('techPos').textContent = pos || '';
-  bar.classList.add('visible');
-}
-
-function hideTechBar() {
-  document.getElementById('techBar').classList.remove('visible');
-}
-
-async function animatedSolve() {
-  if (solving) {
-    solveAbort = true;
-    return;
-  }
-  // Reset user cells
-  for (let i = 0; i < 81; i++) if (!given[i]) board[i] = 0;
-  renderBoard();
-
-  solving = true;
-  solveAbort = false;
-  selected = -1;
-
-  const btn = document.getElementById('solveBtn');
-  btn.textContent = '■ Остановить';
-  btn.className = 'btn primary solving-active';
-  document.getElementById('newBtn').disabled = true;
-  document.getElementById('clearBtn').disabled = true;
-  document.getElementById('status').textContent = '';
-
-  const steps = [];
-  buildSteps([...board], steps);
-
-  for (const step of steps) {
-    if (solveAbort) break;
-    board[step.idx] = step.val;
-    updateCell(step.idx);
-
-    const el = cellEl(step.idx);
-    if (el) {
-      el.classList.add('solving');
-      setTimeout(() => el && el.classList.remove('solving'), 350);
+    if (b[i]) continue;
+    const cands = getCandidates(b, i);
+    if (cands.size === 1) {
+      const val = [...cands][0];
+      const r = Math.floor(i/9), c = i%9;
+      // Find which peers eliminate all other digits
+      const peers = getPeers(i).filter(p => b[p] !== 0);
+      return {
+        idx: i, val, tech: 'Naked Single',
+        explanation: `В клетке R${r+1}C${c+1} возможна только цифра <strong>${val}</strong> — все остальные уже есть в строке, столбце или блоке 3×3.`,
+        peers
+      };
     }
-    showTech(step.tech, `R${Math.floor(step.idx/9)+1}C${step.idx%9+1}`);
-    await sleep(SPEED_MS());
   }
-
-  hideTechBar();
-  solving = false;
-  btn.className = 'btn primary';
-  btn.textContent = '▶ Решить как профи';
-  document.getElementById('newBtn').disabled = false;
-  document.getElementById('clearBtn').disabled = false;
-
-  if (!solveAbort) {
-    // Mark all solved cells green
-    for (let i = 0; i < 81; i++) {
-      if (!given[i] && board[i]) {
-        const el = cellEl(i);
-        if (el) el.classList.add('solved-final');
-      }
-    }
-    document.getElementById('status').textContent = '✓ Решено!';
-    document.getElementById('status').className = 'status win';
-  }
+  return null;
 }
 
-// ─── Build steps using logic techniques ──────────────────────────────────────
-function buildSteps(b, steps) {
-  let progress = true;
-  while (progress) {
-    progress = false;
-
-    // 1. Naked Single — only one candidate in a cell
-    for (let i = 0; i < 81; i++) {
-      if (b[i]) continue;
-      const cands = getCandidates(b, i);
-      if (cands.size === 1) {
-        const val = [...cands][0];
-        steps.push({ idx: i, val, tech: 'Naked Single' });
-        b[i] = val;
-        progress = true;
-      }
-    }
-
-    // 2. Hidden Single — digit can go in only one cell in row/col/block
-    for (let unit = 0; unit < 27; unit++) {
-      const cells = getUnit(unit);
-      for (let v = 1; v <= 9; v++) {
-        const possible = cells.filter(i => !b[i] && isValid(b, i, v));
-        if (possible.length === 1) {
-          const i = possible[0];
-          steps.push({ idx: i, val: v, tech: 'Hidden Single' });
-          b[i] = v;
-          progress = true;
-        }
+function findHiddenSingle(b) {
+  const unitNames = (unit) => {
+    if (unit < 9) return `строке ${unit+1}`;
+    if (unit < 18) return `столбце ${unit-8}`;
+    const bk = unit - 18;
+    return `блоке (${Math.floor(bk/3)*3+1}-${Math.floor(bk/3)*3+3}, ${(bk%3)*3+1}-${(bk%3)*3+3})`;
+  };
+  for (let unit = 0; unit < 27; unit++) {
+    const cells = getUnit(unit);
+    for (let v = 1; v <= 9; v++) {
+      const possible = cells.filter(i => !b[i] && isValid(b, i, v));
+      if (possible.length === 1) {
+        const i = possible[0];
+        const r = Math.floor(i/9), c = i%9;
+        // peers = all filled cells in this unit
+        const peers = cells.filter(p => b[p] !== 0);
+        return {
+          idx: i, val: v, tech: 'Hidden Single',
+          explanation: `Цифра <strong>${v}</strong> в ${unitNames(unit)} может стоять только в клетке R${r+1}C${c+1} — во всех остальных клетках она уже исключена.`,
+          peers
+        };
       }
     }
   }
-
-  // If still not solved, use backtracking (show as "Backtrack")
-  if (b.includes(0)) {
-    backtrackSteps(b, steps);
-  }
+  return null;
 }
 
-function getUnit(unit) {
-  const cells = [];
-  if (unit < 9) { // rows
-    for (let c = 0; c < 9; c++) cells.push(unit*9+c);
-  } else if (unit < 18) { // cols
-    const c = unit - 9;
-    for (let r = 0; r < 9; r++) cells.push(r*9+c);
-  } else { // blocks
-    const b = unit - 18;
-    const br = Math.floor(b/3)*3, bc = (b%3)*3;
-    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) cells.push((br+r)*9+(bc+c));
-  }
-  return cells;
+function findNextLogicalStep(b) {
+  return findNakedSingle(b) || findHiddenSingle(b) || findBacktrackStep(b);
 }
 
-function backtrackSteps(b, steps) {
-  const empty = b.indexOf(0);
-  if (empty === -1) return true;
-  for (let v = 1; v <= 9; v++) {
-    if (isValid(b, empty, v)) {
-      steps.push({ idx: empty, val: v, tech: 'Перебор (Backtrack)' });
-      b[empty] = v;
-      if (backtrackSteps(b, steps)) return true;
-      // undo (don't animate undo for simplicity, just solve correctly)
-      steps.push({ idx: empty, val: 0, tech: 'Откат' });
-      b[empty] = 0;
-    }
+function findBacktrackStep(b) {
+  // Find cell with fewest candidates (MRV heuristic)
+  let best = null, bestSize = 10;
+  for (let i = 0; i < 81; i++) {
+    if (b[i]) continue;
+    const cands = getCandidates(b, i);
+    if (cands.size < bestSize) { bestSize = cands.size; best = i; }
   }
-  return false;
-}
-
-// ─── Numpad ───────────────────────────────────────────────────────────────────
-function buildNumpad() {
-  const np = document.getElementById('numpad');
-  for (let v = 1; v <= 9; v++) {
-    const btn = document.createElement('button');
-    btn.className = 'num-btn';
-    btn.textContent = v;
-    btn.addEventListener('click', () => inputNum(v));
-    np.appendChild(btn);
-  }
-}
-
-function inputNum(v) {
-  if (solving || selected < 0 || given[selected]) return;
-  if (!isValid(board, selected, v) && v !== 0) {
-    const el = cellEl(selected);
-    board[selected] = v;
-    updateCell(selected);
-    el && el.classList.add('error');
-    setTimeout(() => { el && el.classList.remove('error'); board[selected] = 0; updateCell(selected); }, 600);
-    return;
-  }
-  board[selected] = v;
-  updateCell(selected);
-  refreshHighlights();
-  checkWin();
-}
-
-document.addEventListener('keydown', e => {
-  if (solving) return;
-  if (e.key >= '1' && e.key <= '9') inputNum(+e.key);
-  if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') inputNum(0);
-  // Arrow navigation
-  if (selected >= 0) {
-    const moves = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 9, ArrowUp: -9 };
-    if (moves[e.key] !== undefined) {
-      const next = selected + moves[e.key];
-      if (next >= 0 && next < 81) { selected = next; refreshHighlights(); }
-    }
-  }
-});
-
-function checkWin() {
-  if (board.includes(0)) return;
-  for (let i = 0; i < 81; i++) if (!isValid([...board.slice(0,i), 0, ...board.slice(i+1)], i, board[i])) return;
-  document.getElementById('status').textContent = '✓ Решено! Молодец!';
-  document.getElementById('status').className = 'status win';
-}
-
-// ─── Import panel ─────────────────────────────────────────────────────────────
-document.getElementById('importHeader').addEventListener('click', () => {
-  const body = document.getElementById('importBody');
-  const arrow = document.getElementById('importArrow');
-  const open = body.classList.toggle('open');
-  arrow.classList.toggle('open', open);
-});
-
-document.getElementById('importBtn').addEventListener('click', () => {
-  const raw = document.getElementById('importText').value;
-  const textarea = document.getElementById('importText');
-
-  // Extract only digit/placeholder chars
-  const digits = raw.replace(/[^0-9.?_ ]/g, c => /\n|\r/.test(c) ? '' : c)
-    .split('').filter(c => /[0-9.?_ ]/.test(c));
-
-  // Normalize: digits stay, everything else → 0
-  const nums = [];
-  for (const c of raw) {
-    if (c >= '1' && c <= '9') nums.push(+c);
-    else if (c === '0' || c === '.' || c === '?' || c === '_' || c === ' ') nums.push(0);
-    // skip newlines and other chars
-  }
-
-  if (nums.length !== 81) {
-    textarea.classList.add('error-input');
-    document.getElementById('status').textContent = `Ошибка: распознано ${nums.length} клеток, нужно 81`;
-    document.getElementById('status').className = 'status';
-    setTimeout(() => textarea.classList.remove('error-input'), 1000);
-    return;
-  }
-
-  textarea.classList.remove('error-input');
-
-  if (solving) { solveAbort = true; }
-  board = [...nums];
-  given = board.map(v => v !== 0);
-  selected = -1;
-
-  document.getElementById('solveBtn').disabled = false;
-  document.getElementById('solveBtn').className = 'btn primary';
-  document.getElementById('solveBtn').textContent = '▶ Решить как профи';
-  hideTechBar();
-  renderBoard();
-  document.getElementById('status').textContent = `✓ Загружено (${given.filter(Boolean).length} подсказок)`;
-  document.getElementById('status').className = 'status win';
-
-  // Close panel
-  document.getElementById('importBody').classList.remove('open');
-  document.getElementById('importArrow').classList.remove('open');
-});
-
-// ─── Difficulty buttons ───────────────────────────────────────────────────────
-document.querySelectorAll('.diff-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    difficulty = btn.dataset.diff;
-    newGame();
-  });
-});
-
-document.getElementById('newBtn').addEventListener('click', newGame);
-document.getElementById('clearBtn').addEventListener('click', clearUserInput);
-document.getElementById('solveBtn').addEventListener('click', animatedSolve);
-
-// ─── Init ─────────────────────────────────────────────────────────────────────
-buildNumpad();
-newGame();
-</script>
-</body>
-</html>
+  if (!best && best !== 0) return null;
+  const cands = [...getCandidates(b, best)];
+  const v = cands[0];
+  const r = Math.floor(best/9), c = best%9;
+  return {
+    idx: best, val: v, tech: 'Перебор',
+    explanation: `Логика исчерпана. Клетка R${r+1}C${c+1} имеет ${cands.length} канд
