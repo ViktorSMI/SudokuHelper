@@ -238,7 +238,7 @@
   /* Controls */
   .controls {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr 1fr;
+    grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
     gap: 10px;
     margin-bottom: 16px;
   }
@@ -557,6 +557,7 @@
     <button class="btn" id="clearBtn">✕ Очистить</button>
     <button class="btn" id="hintBtn">💡 Подсказка</button>
     <button class="btn" id="stepBtn">→ Шаг</button>
+    <button class="btn" id="copyBtn">⎘ Копировать</button>
     <button class="btn primary" id="solveBtn">▶ Решить как профи</button>
   </div>
 
@@ -783,4 +784,396 @@ function findBacktrackStep(b) {
   const r = Math.floor(best/9), c = best%9;
   return {
     idx: best, val: v, tech: 'Перебор',
-    explanation: `Логика исчерпана. Клетка R${r+1}C${c+1} имеет ${cands.length} канд
+    explanation: `Логика исчерпана. Клетка R${r+1}C${c+1} имеет ${cands.length} кандидатов (${cands.join(', ')}). Пробуем <strong>${v}</strong> — наименее ограниченный выбор.`,
+    peers: getPeers(best).filter(p => b[p] !== 0)
+  };
+}
+
+function getPeers(i) {
+  const r = Math.floor(i/9), c = i%9;
+  const peers = new Set();
+  for (let j = 0; j < 9; j++) {
+    peers.add(r*9+j);
+    peers.add(j*9+c);
+    const br = Math.floor(r/3)*3 + Math.floor(j/3);
+    const bc = Math.floor(c/3)*3 + j%3;
+    peers.add(br*9+bc);
+  }
+  peers.delete(i);
+  return [...peers];
+}
+
+// ─── Hint system ──────────────────────────────────────────────────────────────
+function clearHintHighlight() {
+  currentHint = null;
+  document.getElementById('hintBox').classList.remove('visible');
+  for (let i = 0; i < 81; i++) {
+    const el = cellEl(i);
+    if (el) {
+      el.classList.remove('hint-target', 'hint-peer');
+    }
+  }
+}
+
+function showHint() {
+  if (solving) return;
+  clearHintHighlight();
+  selected = -1;
+
+  const hint = findNextLogicalStep([...board]);
+  if (!hint) {
+    document.getElementById('status').textContent = '✓ Судоку уже решено!';
+    return;
+  }
+
+  currentHint = hint;
+
+  // Highlight target cell
+  const targetEl = cellEl(hint.idx);
+  if (targetEl) targetEl.classList.add('hint-target');
+
+  // Highlight peers (cells that constrain this one)
+  for (const p of hint.peers) {
+    const el = cellEl(p);
+    if (el && !el.classList.contains('hint-target')) el.classList.add('hint-peer');
+  }
+
+  // Show explanation box
+  const box = document.getElementById('hintBox');
+  document.getElementById('hintTitle').textContent = `💡 ${hint.tech}`;
+  document.getElementById('hintText').innerHTML = hint.explanation;
+  box.classList.add('visible');
+
+  document.getElementById('status').textContent = '';
+}
+
+function applyStep() {
+  if (solving) return;
+
+  // Use existing hint or find new one
+  const hint = currentHint || findNextLogicalStep([...board]);
+  if (!hint) {
+    document.getElementById('status').textContent = '✓ Судоку уже решено!';
+    return;
+  }
+
+  clearHintHighlight();
+
+  board[hint.idx] = hint.val;
+  updateCell(hint.idx);
+
+  // Flash animation
+  const el = cellEl(hint.idx);
+  if (el) {
+    el.classList.add('solving');
+    el.classList.add('solved-final');
+    setTimeout(() => el.classList.remove('solving'), 400);
+  }
+
+  showTech(hint.tech, `R${Math.floor(hint.idx/9)+1}C${hint.idx%9+1}`);
+  setTimeout(() => hideTechBar(), 2000);
+
+  checkWin();
+}
+
+// ─── Generate & new game ─────────────────────────────────────────────────────
+function newGame() {
+  if (solving) { solveAbort = true; }
+  clearHintHighlight();
+  document.getElementById('status').textContent = 'Генерация...';
+  document.getElementById('status').className = 'status';
+  setTimeout(() => {
+    board = generatePuzzle(difficulty);
+    given = board.map(v => v !== 0);
+    selected = -1;
+    document.getElementById('solveBtn').disabled = false;
+    document.getElementById('solveBtn').className = 'btn primary';
+    document.getElementById('solveBtn').textContent = '▶ Решить как профи';
+    hideTechBar();
+    renderBoard();
+    document.getElementById('status').textContent = '';
+  }, 30);
+}
+
+function clearUserInput() {
+  if (solving) return;
+  clearHintHighlight();
+  for (let i = 0; i < 81; i++) {
+    if (!given[i]) board[i] = 0;
+  }
+  renderBoard();
+  document.getElementById('status').textContent = '';
+}
+
+// ─── Animated solver ─────────────────────────────────────────────────────────
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const SPEED_MS = () => Math.round(600 / (speed * speed));
+
+function showTech(label, pos) {
+  const bar = document.getElementById('techBar');
+  document.getElementById('techLabel').textContent = label;
+  document.getElementById('techPos').textContent = pos || '';
+  bar.classList.add('visible');
+}
+
+function hideTechBar() {
+  document.getElementById('techBar').classList.remove('visible');
+}
+
+async function animatedSolve() {
+  if (solving) {
+    solveAbort = true;
+    return;
+  }
+  clearHintHighlight();
+  for (let i = 0; i < 81; i++) if (!given[i]) board[i] = 0;
+  renderBoard();
+
+  solving = true;
+  solveAbort = false;
+  selected = -1;
+
+  const btn = document.getElementById('solveBtn');
+  btn.textContent = '■ Остановить';
+  btn.className = 'btn primary solving-active';
+  document.getElementById('newBtn').disabled = true;
+  document.getElementById('clearBtn').disabled = true;
+  document.getElementById('hintBtn').disabled = true;
+  document.getElementById('stepBtn').disabled = true;
+  document.getElementById('status').textContent = '';
+
+  const steps = [];
+  buildSteps([...board], steps);
+
+  for (const step of steps) {
+    if (solveAbort) break;
+    if (step.val === 0) { board[step.idx] = 0; updateCell(step.idx); continue; }
+    board[step.idx] = step.val;
+    updateCell(step.idx);
+
+    const el = cellEl(step.idx);
+    if (el) {
+      el.classList.add('solving');
+      setTimeout(() => el && el.classList.remove('solving'), 350);
+    }
+    showTech(step.tech, `R${Math.floor(step.idx/9)+1}C${step.idx%9+1}`);
+    await sleep(SPEED_MS());
+  }
+
+  hideTechBar();
+  solving = false;
+  btn.className = 'btn primary';
+  btn.textContent = '▶ Решить как профи';
+  document.getElementById('newBtn').disabled = false;
+  document.getElementById('clearBtn').disabled = false;
+  document.getElementById('hintBtn').disabled = false;
+  document.getElementById('stepBtn').disabled = false;
+
+  if (!solveAbort) {
+    for (let i = 0; i < 81; i++) {
+      if (!given[i] && board[i]) {
+        const el = cellEl(i);
+        if (el) el.classList.add('solved-final');
+      }
+    }
+    document.getElementById('status').textContent = '✓ Решено!';
+    document.getElementById('status').className = 'status win';
+  }
+}
+
+// ─── Build steps ─────────────────────────────────────────────────────────────
+function buildSteps(b, steps) {
+  let progress = true;
+  while (progress) {
+    progress = false;
+    for (let i = 0; i < 81; i++) {
+      if (b[i]) continue;
+      const cands = getCandidates(b, i);
+      if (cands.size === 1) {
+        const val = [...cands][0];
+        steps.push({ idx: i, val, tech: 'Naked Single' });
+        b[i] = val; progress = true;
+      }
+    }
+    for (let unit = 0; unit < 27; unit++) {
+      const cells = getUnit(unit);
+      for (let v = 1; v <= 9; v++) {
+        const possible = cells.filter(i => !b[i] && isValid(b, i, v));
+        if (possible.length === 1) {
+          const i = possible[0];
+          steps.push({ idx: i, val: v, tech: 'Hidden Single' });
+          b[i] = v; progress = true;
+        }
+      }
+    }
+  }
+  if (b.includes(0)) backtrackSteps(b, steps);
+}
+
+function getUnit(unit) {
+  const cells = [];
+  if (unit < 9) {
+    for (let c = 0; c < 9; c++) cells.push(unit*9+c);
+  } else if (unit < 18) {
+    const c = unit - 9;
+    for (let r = 0; r < 9; r++) cells.push(r*9+c);
+  } else {
+    const bk = unit - 18;
+    const br = Math.floor(bk/3)*3, bc = (bk%3)*3;
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) cells.push((br+r)*9+(bc+c));
+  }
+  return cells;
+}
+
+function backtrackSteps(b, steps) {
+  const empty = b.indexOf(0);
+  if (empty === -1) return true;
+  for (let v = 1; v <= 9; v++) {
+    if (isValid(b, empty, v)) {
+      steps.push({ idx: empty, val: v, tech: 'Перебор' });
+      b[empty] = v;
+      if (backtrackSteps(b, steps)) return true;
+      steps.push({ idx: empty, val: 0, tech: 'Откат' });
+      b[empty] = 0;
+    }
+  }
+  return false;
+}
+
+// ─── Numpad ───────────────────────────────────────────────────────────────────
+function buildNumpad() {
+  const np = document.getElementById('numpad');
+  for (let v = 1; v <= 9; v++) {
+    const btn = document.createElement('button');
+    btn.className = 'num-btn';
+    btn.textContent = v;
+    btn.addEventListener('click', () => inputNum(v));
+    np.appendChild(btn);
+  }
+}
+
+function inputNum(v) {
+  if (solving || selected < 0 || given[selected]) return;
+  clearHintHighlight();
+  if (!isValid(board, selected, v) && v !== 0) {
+    const el = cellEl(selected);
+    board[selected] = v;
+    updateCell(selected);
+    el && el.classList.add('error');
+    setTimeout(() => { el && el.classList.remove('error'); board[selected] = 0; updateCell(selected); }, 600);
+    return;
+  }
+  board[selected] = v;
+  updateCell(selected);
+  refreshHighlights();
+  checkWin();
+}
+
+document.addEventListener('keydown', e => {
+  if (solving) return;
+  if (e.key >= '1' && e.key <= '9') inputNum(+e.key);
+  if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') inputNum(0);
+  if (selected >= 0) {
+    const moves = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 9, ArrowUp: -9 };
+    if (moves[e.key] !== undefined) {
+      const next = selected + moves[e.key];
+      if (next >= 0 && next < 81) { selected = next; refreshHighlights(); }
+    }
+  }
+});
+
+function checkWin() {
+  if (board.includes(0)) return;
+  for (let i = 0; i < 81; i++) if (!isValid([...board.slice(0,i), 0, ...board.slice(i+1)], i, board[i])) return;
+  hideTechBar();
+  document.getElementById('status').textContent = '✓ Решено! Молодец!';
+  document.getElementById('status').className = 'status win';
+}
+
+// ─── Import panel ─────────────────────────────────────────────────────────────
+document.getElementById('importHeader').addEventListener('click', () => {
+  const body = document.getElementById('importBody');
+  const arrow = document.getElementById('importArrow');
+  const open = body.classList.toggle('open');
+  arrow.classList.toggle('open', open);
+});
+
+document.getElementById('importBtn').addEventListener('click', () => {
+  const raw = document.getElementById('importText').value;
+  const textarea = document.getElementById('importText');
+  const nums = [];
+  for (const c of raw) {
+    if (c >= '1' && c <= '9') nums.push(+c);
+    else if (c === '0' || c === '.' || c === '?' || c === '_' || c === ' ') nums.push(0);
+  }
+  if (nums.length !== 81) {
+    textarea.classList.add('error-input');
+    document.getElementById('status').textContent = `Ошибка: распознано ${nums.length} клеток, нужно 81`;
+    document.getElementById('status').className = 'status';
+    setTimeout(() => textarea.classList.remove('error-input'), 1000);
+    return;
+  }
+  textarea.classList.remove('error-input');
+  if (solving) { solveAbort = true; }
+  clearHintHighlight();
+  board = [...nums];
+  given = board.map(v => v !== 0);
+  selected = -1;
+  document.getElementById('solveBtn').disabled = false;
+  document.getElementById('solveBtn').className = 'btn primary';
+  document.getElementById('solveBtn').textContent = '▶ Решить как профи';
+  hideTechBar();
+  renderBoard();
+  document.getElementById('status').textContent = `✓ Загружено (${given.filter(Boolean).length} подсказок)`;
+  document.getElementById('status').className = 'status win';
+  document.getElementById('importBody').classList.remove('open');
+  document.getElementById('importArrow').classList.remove('open');
+});
+
+// ─── Difficulty buttons ───────────────────────────────────────────────────────
+document.querySelectorAll('.diff-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    difficulty = btn.dataset.diff;
+    newGame();
+  });
+});
+
+document.getElementById('copyBtn').addEventListener('click', () => {
+  const lines = [];
+  for (let r = 0; r < 9; r++) {
+    let row = '';
+    for (let c = 0; c < 9; c++) {
+      const v = board[r * 9 + c];
+      row += v ? String(v) : '?';
+    }
+    lines.push(row);
+  }
+  const text = lines.join('\n');
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('copyBtn');
+    const orig = btn.textContent;
+    btn.textContent = '✓ Скопировано';
+    btn.style.borderColor = 'var(--solve-color)';
+    btn.style.color = 'var(--solve-color)';
+    setTimeout(() => {
+      btn.textContent = orig;
+      btn.style.borderColor = '';
+      btn.style.color = '';
+    }, 1800);
+  });
+});
+
+document.getElementById('newBtn').addEventListener('click', newGame);
+document.getElementById('clearBtn').addEventListener('click', clearUserInput);
+document.getElementById('solveBtn').addEventListener('click', animatedSolve);
+document.getElementById('hintBtn').addEventListener('click', showHint);
+document.getElementById('stepBtn').addEventListener('click', applyStep);
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+buildNumpad();
+newGame();
+</script>
+</body>
+</html>
