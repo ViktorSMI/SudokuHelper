@@ -5,7 +5,7 @@
   "description": "Архив 81 — судоку-приключение и логический помощник",
   "scripts": {
     "test": "node --test tests/engine.test.cjs",
-    "check": "node --check js/engine.js && node --check js/campaign.js && node --check js/progress.js"
+    "check": "node --check js/app.js && node --check js/engine.js && node --check js/campaign.js && node --check js/progress.js"
   },
   "engines": {"node": ">=18"}
 }
