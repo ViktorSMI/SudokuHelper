@@ -1,0 +1,11 @@
+{
+  "name": "sudokuhelper-archive81",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Архив 81 — судоку-приключение и логический помощник",
+  "scripts": {
+    "test": "node --test tests/engine.test.cjs",
+    "check": "node --check js/engine.js && node --check js/campaign.js && node --check js/progress.js"
+  },
+  "engines": {"node": ">=18"}
+}
